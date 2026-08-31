@@ -41,3 +41,41 @@ def test_opposed_embed_shows_tie():
     embed = opposed_embed(result)
     winner_field = next(f for f in embed.fields if f.name == "결과")
     assert winner_field.value == "무승부"
+
+
+from bot.embeds import character_embed
+
+
+def _sample_character(**overrides):
+    base = {
+        "name": "탐사자",
+        "occupation": "사립탐정",
+        "str": 50, "dex": 60, "pow": 55, "con": 65, "app": 45,
+        "edu": 70, "siz": 50, "int": 80, "mov": 8,
+        "skills": {"회계": 5, "심리학": 10, "회피": 30},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_character_embed_uses_character_name_as_title():
+    embed = character_embed(_sample_character(), owner_name="플레이어닉네임")
+    assert embed.title == "탐사자"
+
+
+def test_character_embed_falls_back_to_owner_name_when_unnamed():
+    embed = character_embed(_sample_character(name=None), owner_name="플레이어닉네임")
+    assert embed.title == "플레이어닉네임"
+
+
+def test_character_embed_shows_attributes():
+    embed = character_embed(_sample_character(), owner_name="플레이어닉네임")
+    attr_field = next(f for f in embed.fields if f.name == "특성치")
+    assert "STR 50" in attr_field.value
+    assert "INT 80" in attr_field.value
+
+
+def test_character_embed_shows_top_skills():
+    embed = character_embed(_sample_character(), owner_name="플레이어닉네임")
+    skill_field = next(f for f in embed.fields if f.name == "주요 기능")
+    assert "회피: 30" in skill_field.value

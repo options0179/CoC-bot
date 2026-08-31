@@ -59,3 +59,26 @@ def opposed_embed(
     )
     embed.add_field(name="결과", value=winner_text, inline=False)
     return embed
+
+
+def character_embed(character: dict, owner_name: str) -> discord.Embed:
+    embed = discord.Embed(title=character.get("name") or owner_name)
+    embed.add_field(name="직업", value=character.get("occupation") or "-", inline=False)
+    embed.add_field(
+        name="특성치",
+        value=(
+            f"STR {character['str']} DEX {character['dex']} POW {character['pow']}\n"
+            f"CON {character['con']} APP {character['app']} EDU {character['edu']}\n"
+            f"SIZ {character['siz']} INT {character['int']} MOV {character['mov']}"
+        ),
+        inline=False,
+    )
+    skills = character.get("skills") or {}
+    top_skills = sorted(skills.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    if top_skills:
+        embed.add_field(
+            name="주요 기능",
+            value="\n".join(f"{name}: {value}" for name, value in top_skills),
+            inline=False,
+        )
+    return embed
