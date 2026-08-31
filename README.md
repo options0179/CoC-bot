@@ -9,6 +9,10 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 - `/판정 스킬값 [보너스] [페널티]` — d100 판정, 실패 시 푸시 버튼 첨부
 - `/산정 현재san 손실식` — SAN 체크 (손실식 예: `1/1d4+1`)
 - `/대립 내스킬 상대스킬` — 대립판정
+- `/캐릭터등록열기` — 캐릭터 등록창을 연다 (연 사람만 닫을 수 있음)
+- `/캐릭터등록닫기` — 본인이 연 등록창을 닫는다
+- `/캐릭터등록 파일:<xlsx>` — 등록창이 열려있을 때 캐릭터시트를 업로드해 등록(재업로드 시 덮어쓰기)
+- `/캐릭터조회 [유저]` — 등록된 캐릭터 조회 (생략 시 본인)
 
 ## 작동 원리
 
@@ -110,6 +114,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export DISCORD_TOKEN=발급받은_토큰
+export DATABASE_URL=postgres://user:password@localhost/coc_bot
 python -m bot.main
 ```
 
@@ -122,9 +127,9 @@ docker run -e DISCORD_TOKEN=발급받은_토큰 coc-bot
 
 ## 저비용 호스팅
 
-DB 없이 프로세스 하나만 24/7 떠 있으면 되므로, 1 vCPU / 512MB급의 저사양
-인스턴스로 충분하다. 무료/저가 티어를 제공하는 컨테이너 호스팅(Fly.io, Railway
-등)이나 소형 VPS 어디에 올려도 된다.
+캐릭터시트 등록 기능부터 Postgres가 필요하다. Railway, Supabase, Neon 등 무료/저가 티어의
+관리형 Postgres를 `DATABASE_URL`로 연결해 쓰면 되고, 봇 프로세스 자체는 여전히 1 vCPU /
+512MB급 저사양 인스턴스로 충분하다.
 
 ## 테스트
 
