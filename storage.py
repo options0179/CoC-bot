@@ -1,4 +1,5 @@
 import asyncpg
+import json
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS guild_settings (
@@ -92,3 +93,48 @@ async def is_registration_open(pool: asyncpg.Pool, guild_id: int) -> bool:
             "SELECT registration_open FROM guild_settings WHERE guild_id = $1", guild_id
         )
         return bool(row and row["registration_open"])
+
+
+_CHARACTER_COLUMNS = [
+    "name", "occupation", "age", "sex", "residence", "birthplace",
+    "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov",
+    "hp_current", "hp_max", "san_current", "san_starting",
+    "mp_current", "mp_max", "damage_bonus", "build", "cash", "assets", "skills",
+]
+
+
+def _quote(column: str) -> str:
+    return f'"{column}"' if column == "int" else column
+
+
+async def upsert_character(pool: asyncpg.Pool, guild_id: int, user_id: int, data: dict) -> None:
+    values = [data.get(col) for col in _CHARACTER_COLUMNS]
+    skills_index = _CHARACTER_COLUMNS.index("skills")
+    values[skills_index] = json.dumps(values[skills_index] or {})
+
+    quoted = [_quote(c) for c in _CHARACTER_COLUMNS]
+    placeholders = ", ".join(f"${i + 3}" for i in range(len(_CHARACTER_COLUMNS)))
+    update_clause = ", ".join(f"{qc} = EXCLUDED.{qc}" for qc in quoted)
+    query = f"""
+        INSERT INTO characters (guild_id, discord_user_id, {", ".join(quoted)}, updated_at)
+        VALUES ($1, $2, {placeholders}, now())
+        ON CONFLICT (guild_id, discord_user_id)
+        DO UPDATE SET {update_clause}, updated_at = now()
+    """
+    async with pool.acquire() as conn:
+        await conn.execute(query, guild_id, user_id, *values)
+
+
+async def get_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM characters WHERE guild_id = $1 AND discord_user_id = $2",
+            guild_id,
+            user_id,
+        )
+    if row is None:
+        return None
+    result = dict(row)
+    if isinstance(result["skills"], str):
+        result["skills"] = json.loads(result["skills"])
+    return result
