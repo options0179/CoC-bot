@@ -92,3 +92,42 @@ def parse_dice_notation(text: str) -> DiceExpr:
     return DiceExpr(
         count=int(count), sides=int(sides), modifier=int(modifier) if modifier else 0
     )
+
+
+def _parse_san_side(text: str) -> DiceExpr:
+    text = text.strip()
+    if text.lstrip("-").isdigit():
+        return DiceExpr(count=0, sides=0, modifier=int(text))
+    return parse_dice_notation(text)
+
+
+def parse_san_formula(text: str) -> tuple[DiceExpr, DiceExpr]:
+    parts = text.strip().split("/")
+    if len(parts) != 2:
+        raise ValueError(
+            f"SAN 손실식은 '성공손실/실패손실' 형식이어야 합니다 (예: 1/1d4+1): {text}"
+        )
+    return _parse_san_side(parts[0]), _parse_san_side(parts[1])
+
+
+@dataclass
+class SanityResult:
+    roll: int
+    current_san: int
+    success: bool
+    loss: int
+    remaining_san: int
+
+
+def sanity_check(
+    current_san: int, formula: str, rng: random.Random = random
+) -> SanityResult:
+    success_loss, fail_loss = parse_san_formula(formula)
+    roll = roll_d100(rng=rng)
+    success = roll <= current_san
+    loss_expr = success_loss if success else fail_loss
+    loss = loss_expr.roll(rng=rng)
+    remaining = max(0, current_san - loss)
+    return SanityResult(
+        roll=roll, current_san=current_san, success=success, loss=loss, remaining_san=remaining
+    )
