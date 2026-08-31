@@ -131,3 +131,29 @@ def sanity_check(
     return SanityResult(
         roll=roll, current_san=current_san, success=success, loss=loss, remaining_san=remaining
     )
+
+
+_LEVEL_RANK = {level: i for i, level in enumerate(SUCCESS_LEVELS_RANKED)}
+
+
+@dataclass
+class OpposedResult:
+    a: CheckResult
+    b: CheckResult
+    winner: str
+
+
+def opposed_check(skill_a: int, skill_b: int, rng: random.Random = random) -> OpposedResult:
+    result_a = roll_check(skill_a, rng=rng)
+    result_b = roll_check(skill_b, rng=rng)
+    rank_a = _LEVEL_RANK[result_a.level]
+    rank_b = _LEVEL_RANK[result_b.level]
+    if rank_a > rank_b:
+        winner = "a"
+    elif rank_b > rank_a:
+        winner = "b"
+    elif skill_a == skill_b:
+        winner = "tie"
+    else:
+        winner = "a" if skill_a > skill_b else "b"
+    return OpposedResult(a=result_a, b=result_b, winner=winner)
