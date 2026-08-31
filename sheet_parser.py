@@ -25,6 +25,15 @@ ATTRIBUTE_LABELS = {
 
 _INT_FIELDS = set(ATTRIBUTE_LABELS.values()) | {"age"}
 
+SKILL_NAMES = {
+    "감정", "고고학", "관찰력", "근접전투(격투)", "기계수리", "도약", "듣기", "말주변",
+    "매혹", "법률", "변장", "사격(권총)", "사격(라이플/샷건)", "설득", "손놀림", "수영",
+    "승마", "심리학", "언어(모국어)", "역사", "열쇠공", "오르기", "오컬트", "위협",
+    "은밀행동", "응급치료", "의료", "인류학", "자동차 운전", "자료조사", "자연", "재력",
+    "전기수리", "정신분석", "중장비 조작", "추적", "크툴루 신화", "투척", "항법", "회계",
+    "회피",
+}
+
 
 def _build_label_index(ws) -> dict:
     index = {}
@@ -47,6 +56,18 @@ def _to_int(value, label: str) -> int:
     return int(value)
 
 
+def _parse_skills(ws, labels: dict) -> dict:
+    skills = {}
+    for name in SKILL_NAMES:
+        cell = labels.get(name)
+        if cell is None:
+            continue
+        value = _adjacent_value(ws, cell)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
+            skills[name] = int(value)
+    return skills
+
+
 def parse_character_sheet(file_bytes: bytes) -> dict:
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     ws = wb.active
@@ -60,5 +81,5 @@ def parse_character_sheet(file_bytes: bytes) -> dict:
         value = _adjacent_value(ws, cell)
         result[field] = _to_int(value, label) if field in _INT_FIELDS else value
 
-    result["skills"] = {}
+    result["skills"] = _parse_skills(ws, labels)
     return result
