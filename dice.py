@@ -1,4 +1,5 @@
 import random
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -67,3 +68,27 @@ def roll_check(
 ) -> CheckResult:
     roll = roll_d100(bonus=bonus, penalty=penalty, rng=rng)
     return CheckResult(roll=roll, skill=skill, level=determine_success_level(roll, skill))
+
+
+_DICE_RE = re.compile(r"^(\d+)d(\d+)([+-]\d+)?$")
+
+
+@dataclass
+class DiceExpr:
+    count: int
+    sides: int
+    modifier: int = 0
+
+    def roll(self, rng: random.Random = random) -> int:
+        return sum(rng.randint(1, self.sides) for _ in range(self.count)) + self.modifier
+
+
+def parse_dice_notation(text: str) -> DiceExpr:
+    normalized = text.strip().replace(" ", "")
+    match = _DICE_RE.match(normalized)
+    if not match:
+        raise ValueError(f"올바르지 않은 주사위 표기입니다: {text}")
+    count, sides, modifier = match.groups()
+    return DiceExpr(
+        count=int(count), sides=int(sides), modifier=int(modifier) if modifier else 0
+    )
