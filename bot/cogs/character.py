@@ -2,7 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from storage import close_registration, open_registration
+from sheet_parser import parse_character_sheet
+from storage import close_registration, is_registration_open, open_registration, upsert_character
 
 
 class CharacterCog(commands.Cog):
@@ -29,6 +30,27 @@ class CharacterCog(commands.Cog):
             )
             return
         await interaction.response.send_message("캐릭터 등록창을 닫았습니다.")
+
+    @app_commands.command(name="캐릭터등록", description="엑셀 캐릭터시트를 등록합니다.")
+    @app_commands.describe(파일="캐릭터시트 xlsx 파일")
+    async def register(
+        self, interaction: discord.Interaction, 파일: discord.Attachment
+    ) -> None:
+        if not await is_registration_open(self.pool, interaction.guild_id):
+            await interaction.response.send_message(
+                "지금은 등록 기간이 아닙니다.", ephemeral=True
+            )
+            return
+        file_bytes = await 파일.read()
+        try:
+            data = parse_character_sheet(file_bytes)
+        except ValueError as exc:
+            await interaction.response.send_message(
+                f"시트를 읽을 수 없습니다: {exc}", ephemeral=True
+            )
+            return
+        await upsert_character(self.pool, interaction.guild_id, interaction.user.id, data)
+        await interaction.response.send_message(f"{data['name']} 캐릭터를 등록했습니다.")
 
 
 async def setup(bot: commands.Bot) -> None:

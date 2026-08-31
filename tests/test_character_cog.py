@@ -68,3 +68,61 @@ def test_close_window_rejected_for_non_opener(monkeypatch):
     interaction.response.send_message.assert_awaited_once_with(
         "본인이 연 등록창만 닫을 수 있습니다.", ephemeral=True
     )
+
+
+def _make_attachment(file_bytes: bytes = b"fake-bytes"):
+    attachment = MagicMock()
+    attachment.read = AsyncMock(return_value=file_bytes)
+    return attachment
+
+
+def test_register_rejected_when_window_closed(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.is_registration_open", AsyncMock(return_value=False)
+    )
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "지금은 등록 기간이 아닙니다.", ephemeral=True
+    )
+
+
+def test_register_parses_and_stores_on_success(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(
+        "bot.cogs.character.parse_character_sheet",
+        lambda file_bytes: {"name": "탐사자", "skills": {}},
+    )
+    upsert_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.character.upsert_character", upsert_mock)
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
+
+    upsert_mock.assert_awaited_once()
+    interaction.response.send_message.assert_awaited_once_with("탐사자 캐릭터를 등록했습니다.")
+
+
+def test_register_reports_parse_error(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
+    )
+
+    def _raise(file_bytes):
+        raise ValueError("'이름' 항목을 시트에서 찾을 수 없습니다.")
+
+    monkeypatch.setattr("bot.cogs.character.parse_character_sheet", _raise)
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "시트를 읽을 수 없습니다: '이름' 항목을 시트에서 찾을 수 없습니다.", ephemeral=True
+    )
