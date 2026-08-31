@@ -29,6 +29,21 @@ def test_parse_dice_notation_invalid_raises():
         parse_dice_notation("not-a-dice")
 
 
+def test_parse_dice_notation_count_too_high_raises():
+    with pytest.raises(ValueError):
+        parse_dice_notation("101d6")
+
+
+def test_parse_dice_notation_sides_too_high_raises():
+    with pytest.raises(ValueError):
+        parse_dice_notation("1d1001")
+
+
+def test_parse_dice_notation_zero_sides_raises():
+    with pytest.raises(ValueError):
+        parse_dice_notation("1d0")
+
+
 def test_dice_expr_roll_sums_and_adds_modifier():
     rng = FakeRng([3, 2])
     expr = DiceExpr(count=2, sides=6, modifier=1)

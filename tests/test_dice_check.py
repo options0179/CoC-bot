@@ -86,6 +86,15 @@ def test_roll_d100_caps_at_two_extra_dice():
     assert roll_d100(bonus=5, rng=rng) == 15
 
 
+def test_roll_d100_bonus_correctly_compares_after_00_remap():
+    # ones=0, tens 후보 [0, 9]. 예전 버그는 remap 전 raw tens(0 < 9)를 비교해
+    # tens=0을 선택했는데, 이는 remap 후 100(최악의 결과)이 된다.
+    # 올바른 동작은 remap 후 실제 결과값(100 vs 90)을 비교해 보너스는 더 낮은
+    # 90을 채택해야 한다.
+    rng = FakeRng([0, 0, 9])
+    assert roll_d100(bonus=1, rng=rng) == 90
+
+
 def test_roll_check_returns_result_with_level():
     rng = FakeRng([0, 3])  # roll = 30
     result = roll_check(skill=60, rng=rng)

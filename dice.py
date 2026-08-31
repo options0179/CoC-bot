@@ -53,14 +53,12 @@ def roll_d100(bonus: int = 0, penalty: int = 0, rng: random.Random = random) -> 
     net = max(-2, min(2, bonus - penalty))
     ones = rng.randint(0, 9)
     tens_options = [rng.randint(0, 9) for _ in range(1 + abs(net))]
+    candidates = [(tens * 10 + ones) or 100 for tens in tens_options]
     if net > 0:
-        tens = min(tens_options)
+        return min(candidates)
     elif net < 0:
-        tens = max(tens_options)
-    else:
-        tens = tens_options[0]
-    roll = tens * 10 + ones
-    return 100 if roll == 0 else roll
+        return max(candidates)
+    return candidates[0]
 
 
 def roll_check(
@@ -89,15 +87,20 @@ def parse_dice_notation(text: str) -> DiceExpr:
     if not match:
         raise ValueError(f"올바르지 않은 주사위 표기입니다: {text}")
     count, sides, modifier = match.groups()
-    return DiceExpr(
-        count=int(count), sides=int(sides), modifier=int(modifier) if modifier else 0
-    )
+    count, sides = int(count), int(sides)
+    if count > 100:
+        raise ValueError(f"주사위 개수는 100개를 초과할 수 없습니다: {text}")
+    if not (1 <= sides <= 1000):
+        raise ValueError(f"주사위 면 수는 1~1000 사이여야 합니다: {text}")
+    return DiceExpr(count=count, sides=sides, modifier=int(modifier) if modifier else 0)
 
 
 def _parse_san_side(text: str) -> DiceExpr:
     text = text.strip()
-    if text.lstrip("-").isdigit():
+    if text.isdigit():
         return DiceExpr(count=0, sides=0, modifier=int(text))
+    if text.startswith("-") and text[1:].isdigit():
+        raise ValueError(f"SAN 손실 값은 음수일 수 없습니다: {text}")
     return parse_dice_notation(text)
 
 

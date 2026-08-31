@@ -21,6 +21,11 @@ def test_parse_san_formula_invalid_raises():
         parse_san_formula("1d4+1")  # 슬래시 없음
 
 
+def test_parse_san_formula_negative_constant_raises():
+    with pytest.raises(ValueError):
+        parse_san_formula("-5/1d4+1")
+
+
 def test_sanity_check_success():
     # roll 1D100 -> ones=0,tens=2 => 20 <= current_san(50) => 성공, 성공손실(1) 적용
     rng = FakeRng([0, 2])
