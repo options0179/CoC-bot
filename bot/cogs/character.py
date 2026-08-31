@@ -2,8 +2,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.embeds import character_embed
 from sheet_parser import parse_character_sheet
-from storage import close_registration, is_registration_open, open_registration, upsert_character
+from storage import (
+    close_registration,
+    get_character,
+    is_registration_open,
+    open_registration,
+    upsert_character,
+)
 
 
 class CharacterCog(commands.Cog):
@@ -51,6 +58,23 @@ class CharacterCog(commands.Cog):
             return
         await upsert_character(self.pool, interaction.guild_id, interaction.user.id, data)
         await interaction.response.send_message(f"{data['name']} 캐릭터를 등록했습니다.")
+
+    @app_commands.command(name="캐릭터조회", description="등록된 캐릭터를 조회합니다.")
+    @app_commands.describe(유저="조회할 유저 (생략 시 본인)")
+    async def lookup(
+        self,
+        interaction: discord.Interaction,
+        유저: discord.Member | None = None,
+    ) -> None:
+        target = 유저 or interaction.user
+        character = await get_character(self.pool, interaction.guild_id, target.id)
+        if character is None:
+            await interaction.response.send_message(
+                "등록된 캐릭터가 없습니다.", ephemeral=True
+            )
+            return
+        embed = character_embed(character, target.display_name)
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:

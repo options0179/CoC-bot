@@ -126,3 +126,36 @@ def test_register_reports_parse_error(monkeypatch):
     interaction.response.send_message.assert_awaited_once_with(
         "시트를 읽을 수 없습니다: '이름' 항목을 시트에서 찾을 수 없습니다.", ephemeral=True
     )
+
+
+def test_lookup_reports_missing_character(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_character", AsyncMock(return_value=None)
+    )
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.lookup.callback(cog, interaction, None))
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "등록된 캐릭터가 없습니다.", ephemeral=True
+    )
+
+
+def test_lookup_sends_embed_for_self_when_no_target_given(monkeypatch):
+    character = {
+        "name": "탐사자", "occupation": "사립탐정",
+        "str": 50, "dex": 60, "pow": 55, "con": 65, "app": 45,
+        "edu": 70, "siz": 50, "int": 80, "mov": 8, "skills": {},
+    }
+    monkeypatch.setattr(
+        "bot.cogs.character.get_character", AsyncMock(return_value=character)
+    )
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.lookup.callback(cog, interaction, None))
+
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs["embed"].title == "탐사자"
