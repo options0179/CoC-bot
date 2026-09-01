@@ -64,3 +64,40 @@ def test_allows_unknown_target_skill_with_no_roll():
 
     assert result.target_skill == "unknown"
     assert result.requires_roll is False
+
+
+def test_rejects_missing_required_field():
+    raw = json.dumps({
+        "intent_type": "skill_check",
+        "target_skill": "관찰력",
+        # missing "purpose"
+        "requires_roll": True,
+    })
+
+    with pytest.raises(ValueError, match="필수 필드가 없습니다"):
+        parse_intent_response(raw)
+
+
+def test_rejects_wrong_type_requires_roll():
+    raw = json.dumps({
+        "intent_type": "skill_check",
+        "target_skill": "관찰력",
+        "purpose": "x",
+        "requires_roll": "yes",  # should be boolean, not string
+    })
+
+    with pytest.raises(ValueError, match="requires_roll은 boolean이어야 합니다"):
+        parse_intent_response(raw)
+
+
+def test_rejects_wrong_type_confidence():
+    raw = json.dumps({
+        "intent_type": "skill_check",
+        "target_skill": "관찰력",
+        "purpose": "x",
+        "requires_roll": True,
+        "confidence": "high",  # should be number, not string
+    })
+
+    with pytest.raises(ValueError, match="confidence는 숫자여야 합니다"):
+        parse_intent_response(raw)

@@ -37,18 +37,39 @@ class IntentResult:
 
 def parse_intent_response(raw_json: str) -> IntentResult:
     data = json.loads(raw_json)
+
+    # Check for required fields
+    required_fields = RESPONSE_SCHEMA["required"]
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        raise ValueError(f"필수 필드가 없습니다: {', '.join(missing_fields)}")
+
     intent_type = data["intent_type"]
     if intent_type not in _INTENT_TYPES:
         raise ValueError(f"알 수 없는 intent_type입니다: {intent_type}")
+
     target_skill = data["target_skill"]
     if target_skill not in SKILL_NAMES and target_skill != "unknown":
         raise ValueError(f"알 수 없는 target_skill입니다: {target_skill}")
+
+    # Validate requires_roll is a boolean
+    requires_roll_value = data["requires_roll"]
+    if not isinstance(requires_roll_value, bool):
+        raise ValueError(f"requires_roll은 boolean이어야 합니다: {requires_roll_value!r}")
+
+    # Validate confidence is a number if present
+    confidence_value = data.get("confidence", 0.0)
+    try:
+        confidence = float(confidence_value)
+    except (ValueError, TypeError):
+        raise ValueError(f"confidence는 숫자여야 합니다: {confidence_value!r}")
+
     return IntentResult(
         action_summary=data.get("action_summary", ""),
         intent_type=intent_type,
         target_skill=target_skill,
         purpose=data["purpose"],
         target_object=data.get("target_object", ""),
-        requires_roll=bool(data["requires_roll"]),
-        confidence=float(data.get("confidence", 0.0)),
+        requires_roll=requires_roll_value,
+        confidence=confidence,
     )
