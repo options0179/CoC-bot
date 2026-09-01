@@ -73,3 +73,31 @@ def parse_intent_response(raw_json: str) -> IntentResult:
         requires_roll=requires_roll_value,
         confidence=confidence,
     )
+
+
+def build_prompt(player_input: str, scene_context: str) -> str:
+    return (
+        f"[현재 장면]\n{scene_context}\n\n"
+        f"[플레이어 입력]\n{player_input}\n\n"
+        "플레이어의 행동을 분석해 요청된 JSON 스키마로만 응답하라. "
+        "target_skill은 반드시 주어진 목록 중 하나여야 하며, "
+        "판정이 불필요하면 requires_roll=false, target_skill='unknown'으로 응답하라."
+    )
+
+
+def _build_model():
+    import google.generativeai as genai
+
+    return genai.GenerativeModel(
+        MODEL_NAME,
+        generation_config={
+            "response_mime_type": "application/json",
+            "response_schema": RESPONSE_SCHEMA,
+        },
+    )
+
+
+def analyze_intent(player_input: str, scene_context: str, model=None) -> IntentResult:
+    model = model or _build_model()
+    response = model.generate_content(build_prompt(player_input, scene_context))
+    return parse_intent_response(response.text)

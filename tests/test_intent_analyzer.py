@@ -1,8 +1,9 @@
 import json
+from unittest.mock import MagicMock
 
 import pytest
 
-from intent_analyzer import COC_SKILLS, IntentResult, parse_intent_response
+from intent_analyzer import COC_SKILLS, IntentResult, analyze_intent, build_prompt, parse_intent_response
 from sheet_parser import SKILL_NAMES
 
 
@@ -101,3 +102,26 @@ def test_rejects_wrong_type_confidence():
 
     with pytest.raises(ValueError, match="confidence는 숫자여야 합니다"):
         parse_intent_response(raw)
+
+
+def test_build_prompt_includes_scene_and_input():
+    prompt = build_prompt("문을 연다", "어두운 복도")
+
+    assert "문을 연다" in prompt
+    assert "어두운 복도" in prompt
+
+
+def test_analyze_intent_uses_injected_model_and_parses_response():
+    fake_model = MagicMock()
+    fake_model.generate_content.return_value = MagicMock(text=json.dumps({
+        "intent_type": "movement",
+        "target_skill": "unknown",
+        "purpose": "복도로 이동",
+        "requires_roll": False,
+    }))
+
+    result = analyze_intent("복도로 걸어간다", "어두운 복도", model=fake_model)
+
+    fake_model.generate_content.assert_called_once()
+    assert result.purpose == "복도로 이동"
+    assert result.requires_roll is False
