@@ -7,3 +7,4 @@ venv/
 
 docs/superpowers/plans/
 docs/superpowers/specs/
+.claude/worktrees/
