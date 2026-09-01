@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import discord
 from discord import app_commands
@@ -8,6 +9,8 @@ from bot.embeds import check_embed, narration_embed
 from dice import roll_check
 from intent_analyzer import analyze_intent
 from storage import get_skill_value
+
+logger = logging.getLogger(__name__)
 
 
 class ActionCog(commands.Cog):
@@ -22,7 +25,14 @@ class ActionCog(commands.Cog):
     @app_commands.guild_only()
     async def action(self, interaction: discord.Interaction, 설명: str) -> None:
         await interaction.response.defer()
-        intent = await asyncio.to_thread(analyze_intent, 설명, "")
+        try:
+            intent = await asyncio.to_thread(analyze_intent, 설명, "")
+        except ValueError:
+            logger.exception("Failed to analyze intent")
+            await interaction.followup.send(
+                "행동을 분석하지 못했습니다. 다시 서술해 주세요.", ephemeral=True
+            )
+            return
 
         if not intent.requires_roll or intent.target_skill == "unknown":
             await interaction.followup.send(

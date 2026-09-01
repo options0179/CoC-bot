@@ -56,11 +56,11 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 잡아 한국어 메시지로 사용자에게만 보이게(ephemeral) 응답한다. 각 cog는 이런
 입력 검증 오류를 직접 처리하지 않고 이 전역 핸들러에 위임한다.
 
-**봇 기동.** `bot/main.py`의 `main()`이 `DISCORD_TOKEN`과 `DATABASE_URL` 환경변수를
-모두 확인하고, 하나라도 없으면 기동을 중단한다. 연결되면 `CoCBot.setup_hook()`이
+**봇 기동.** `bot/main.py`의 `main()`이 `DISCORD_TOKEN`, `DATABASE_URL`, `GEMINI_API_KEY`
+환경변수를 모두 확인하고, 하나라도 없으면 기동을 중단한다. 연결되면 `CoCBot.setup_hook()`이
 가장 먼저 `storage.create_pool()`로 Postgres 커넥션 풀을 만들고(스키마도 이때
-생성/확인한다), 이어서 네 cog(`check`/`sanity`/`opposed`/`character`)를 로드한 뒤
-`tree.sync()`로 슬래시 커맨드를 Discord에 등록한다.
+생성/확인한다), 이어서 다섯 cog(`check`/`sanity`/`opposed`/`character`/`action`)를
+로드한 뒤 `tree.sync()`로 슬래시 커맨드를 Discord에 등록한다.
 
 ## 프로젝트 구조
 
@@ -80,11 +80,11 @@ CoC-Bot/
 │       ├── character.py         # /캐릭터등록열기, /캐릭터등록닫기, /캐릭터등록, /캐릭터조회 커맨드
 │       └── action.py            # /행동 커맨드
 ├── tests/                       # bot/, dice.py, storage.py, sheet_parser.py 구조를 그대로 미러링하는 pytest 테스트
-├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl)
+├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl, google-generativeai)
 ├── pytest.ini                    # pytest 설정 (pythonpath=.)
 ├── Dockerfile                    # 컨테이너 이미지 빌드 정의
 ├── .dockerignore                 # Docker 빌드 컨텍스트 제외 목록 (.env 등 시크릿 방지)
-├── .env.example                  # 환경변수 템플릿 (DISCORD_TOKEN, DATABASE_URL)
+├── .env.example                  # 환경변수 템플릿 (DISCORD_TOKEN, DATABASE_URL, GEMINI_API_KEY)
 ├── .gitignore                    # git 추적 제외 목록
 └── docs/superpowers/              # 설계 스펙 · 구현 계획 문서
 ```
@@ -98,7 +98,7 @@ CoC-Bot/
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
-| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL 가드) |
+| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`와 캐릭터 딕셔너리를 한국어 Discord 임베드로 포맷 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
@@ -114,11 +114,11 @@ CoC-Bot/
 | `tests/test_check_cog.py` / `test_sanity_cog.py` / `test_opposed_cog.py` / `test_character_cog.py` | 각 슬래시 커맨드 cog 테스트 (Discord Interaction은 mock으로 대체) |
 | `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
 | `tests/test_storage_registration.py` / `test_storage_characters.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
-| `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl` |
+| `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl`, `google-generativeai` |
 | `pytest.ini` | 프로젝트 루트를 `sys.path`에 추가해 `dice.py`/`bot` 임포트가 되도록 설정 |
 | `Dockerfile` | `python:3.12-slim` 베이스, 의존성 설치 후 소스 복사, `python -m bot.main`으로 기동 |
 | `.dockerignore` | 이미지 빌드 시 `.env`/`.git`/`.venv`/`tests/` 등을 제외해 시크릿 유출과 이미지 비대화를 방지 |
-| `.env.example` | `DISCORD_TOKEN=`, `DATABASE_URL=` 을 담은 환경변수 템플릿 (실제 값은 커밋하지 않음) |
+| `.env.example` | `DISCORD_TOKEN=`, `DATABASE_URL=`, `GEMINI_API_KEY=` 를 담은 환경변수 템플릿 (실제 값은 커밋하지 않음) |
 | `docs/superpowers/specs/…design.md` | 설계 스펙 (요구사항, 아키텍처 결정) |
 | `docs/superpowers/plans/…coc-discord-bot.md` | 태스크별 TDD 구현 계획 |
 
@@ -135,6 +135,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export DISCORD_TOKEN=발급받은_토큰
 export DATABASE_URL=postgres://user:password@localhost/coc_bot
+export GEMINI_API_KEY=발급받은_Gemini_API_키
 python -m bot.main
 ```
 
@@ -142,7 +143,7 @@ python -m bot.main
 
 ```bash
 docker build -t coc-bot .
-docker run -e DISCORD_TOKEN=발급받은_토큰 -e DATABASE_URL=postgres://user:password@host/coc_bot coc-bot
+docker run -e DISCORD_TOKEN=발급받은_토큰 -e DATABASE_URL=postgres://user:password@host/coc_bot -e GEMINI_API_KEY=발급받은_Gemini_API_키 coc-bot
 ```
 
 ## 저비용 호스팅

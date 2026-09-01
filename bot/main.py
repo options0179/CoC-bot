@@ -55,6 +55,8 @@ def main() -> None:
         raise SystemExit("DISCORD_TOKEN 환경변수가 설정되지 않았습니다.")
     if not os.environ.get("DATABASE_URL"):
         raise SystemExit("DATABASE_URL 환경변수가 설정되지 않았습니다.")
+    if not os.environ.get("GEMINI_API_KEY"):
+        raise SystemExit("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
     bot.run(token)
 
 
