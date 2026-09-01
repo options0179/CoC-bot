@@ -82,3 +82,14 @@ def character_embed(character: dict, owner_name: str) -> discord.Embed:
             inline=False,
         )
     return embed
+
+
+def narration_embed(action_summary: str, purpose: str) -> discord.Embed:
+    embed = discord.Embed(
+        title="서술",
+        description=action_summary or purpose,
+        color=discord.Color.blurple(),
+    )
+    if purpose:
+        embed.add_field(name="목적", value=purpose)
+    return embed

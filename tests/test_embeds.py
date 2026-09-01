@@ -79,3 +79,13 @@ def test_character_embed_shows_top_skills():
     embed = character_embed(_sample_character(), owner_name="플레이어닉네임")
     skill_field = next(f for f in embed.fields if f.name == "주요 기능")
     assert "회피: 30" in skill_field.value
+
+
+from bot.embeds import narration_embed
+
+
+def test_narration_embed_shows_summary_and_purpose():
+    embed = narration_embed("주변을 둘러본다", "상황을 파악하려 함")
+
+    assert embed.description == "주변을 둘러본다"
+    assert embed.fields[0].value == "상황을 파악하려 함"
