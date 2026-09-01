@@ -24,6 +24,7 @@ class CoCBot(commands.Bot):
         await self.load_extension("bot.cogs.sanity")
         await self.load_extension("bot.cogs.opposed")
         await self.load_extension("bot.cogs.character")
+        await self.load_extension("bot.cogs.action")
         await self.tree.sync()
 
     async def close(self) -> None:

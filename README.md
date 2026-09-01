@@ -14,6 +14,7 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 - `/캐릭터등록닫기` — 본인이 연 등록창을 닫는다
 - `/캐릭터등록 파일:<xlsx>` — 등록창이 열려있을 때 캐릭터시트를 업로드해 등록(재업로드 시 덮어쓰기)
 - `/캐릭터조회 [유저]` — 등록된 캐릭터 조회 (생략 시 본인)
+- `/행동 설명` — 자유 서술 행동을 분석해 필요하면 스킬 판정을 자동으로 굴린다 (판정이 필요 없으면 서술만 응답)
 
 ## 작동 원리
 
@@ -68,6 +69,7 @@ CoC-Bot/
 ├── dice.py                      # CoC 7판 판정 로직 전체 (discord 비의존 순수 함수)
 ├── storage.py                    # Postgres 스키마 생성 + 등록창/캐릭터 CRUD (asyncpg)
 ├── sheet_parser.py                # xlsx 캐릭터시트 파싱 (openpyxl)
+├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
 ├── bot/
 │   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, cog 로더, 전역 에러 핸들러
 │   ├── embeds.py                # 판정/캐릭터 결과 → 한국어 Discord 임베드 포맷
@@ -75,7 +77,8 @@ CoC-Bot/
 │       ├── check.py             # /판정 커맨드 + PushView(재도전 버튼)
 │       ├── sanity.py            # /산정 커맨드
 │       ├── opposed.py           # /대립 커맨드
-│       └── character.py         # /캐릭터등록열기, /캐릭터등록닫기, /캐릭터등록, /캐릭터조회 커맨드
+│       ├── character.py         # /캐릭터등록열기, /캐릭터등록닫기, /캐릭터등록, /캐릭터조회 커맨드
+│       └── action.py            # /행동 커맨드
 ├── tests/                       # bot/, dice.py, storage.py, sheet_parser.py 구조를 그대로 미러링하는 pytest 테스트
 ├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl)
 ├── pytest.ini                    # pytest 설정 (pythonpath=.)
@@ -93,6 +96,7 @@ CoC-Bot/
 | `dice.py` | d100 판정/성공등급, 보너스·페널티 주사위, 다이스 표기(`XdY+Z`) 파서, SAN 체크, 대립판정 — 판정 계산 로직 전부가 여기 있다. |
 | `storage.py` | Postgres 스키마(`guild_settings`, `characters`) 생성, 등록창 열기/닫기/조회, 캐릭터 upsert/조회 — DB 접근 전부가 여기 있다. |
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` |
+| `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
 | `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL 가드) |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`와 캐릭터 딕셔너리를 한국어 Discord 임베드로 포맷 |
@@ -100,6 +104,7 @@ CoC-Bot/
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
 | `bot/cogs/opposed.py` | `/대립` 슬래시 커맨드 |
 | `bot/cogs/character.py` | 캐릭터 등록창 열기/닫기, xlsx 업로드로 캐릭터 등록(`defer()` 후 `asyncio.to_thread`로 파싱), 캐릭터 조회 |
+| `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 분석해 판정이 필요 없으면 서술 임베드를, 필요하면 캐릭터 스킬값을 조회해 `dice.roll_check()`로 판정한다 |
 | `tests/test_dice_check.py` | 기본 판정·성공등급·보너스/페널티 로직 테스트, `FakeRng` 결정론적 난수 테스트 헬퍼 |
 | `tests/test_dice_notation.py` | 다이스 표기 파서 테스트 |
 | `tests/test_sanity.py` | SAN 체크 로직 테스트 |
