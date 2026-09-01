@@ -5,6 +5,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import storage
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("coc-bot")
 
@@ -14,12 +16,20 @@ INTENTS = discord.Intents.default()
 class CoCBot(commands.Bot):
     def __init__(self) -> None:
         super().__init__(command_prefix="!coc-unused!", intents=INTENTS)
+        self.pool = None
 
     async def setup_hook(self) -> None:
+        self.pool = await storage.create_pool(os.environ["DATABASE_URL"])
         await self.load_extension("bot.cogs.check")
         await self.load_extension("bot.cogs.sanity")
         await self.load_extension("bot.cogs.opposed")
+        await self.load_extension("bot.cogs.character")
         await self.tree.sync()
+
+    async def close(self) -> None:
+        if self.pool is not None:
+            await self.pool.close()
+        await super().close()
 
 
 bot = CoCBot()
@@ -42,6 +52,8 @@ def main() -> None:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         raise SystemExit("DISCORD_TOKEN 환경변수가 설정되지 않았습니다.")
+    if not os.environ.get("DATABASE_URL"):
+        raise SystemExit("DATABASE_URL 환경변수가 설정되지 않았습니다.")
     bot.run(token)
 
 
