@@ -7,6 +7,7 @@ from bot.cogs.character import CharacterCog
 def _make_interaction(guild_id=1, user_id=100):
     interaction = MagicMock()
     interaction.response = AsyncMock()
+    interaction.followup = AsyncMock()
     interaction.guild_id = guild_id
     interaction.user = MagicMock(id=user_id)
     return interaction
@@ -70,10 +71,25 @@ def test_close_window_rejected_for_non_opener(monkeypatch):
     )
 
 
-def _make_attachment(file_bytes: bytes = b"fake-bytes"):
+def _make_attachment(file_bytes: bytes = b"fake-bytes", filename: str = "sheet.xlsx"):
     attachment = MagicMock()
+    attachment.filename = filename
     attachment.read = AsyncMock(return_value=file_bytes)
     return attachment
+
+
+def test_register_rejected_for_non_xlsx_file(monkeypatch):
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(
+        cog.register.callback(cog, interaction, _make_attachment(filename="sheet.txt"))
+    )
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "xlsx 파일만 업로드할 수 있습니다.", ephemeral=True
+    )
+    interaction.response.defer.assert_not_awaited()
 
 
 def test_register_rejected_when_window_closed(monkeypatch):
@@ -85,7 +101,8 @@ def test_register_rejected_when_window_closed(monkeypatch):
 
     asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
 
-    interaction.response.send_message.assert_awaited_once_with(
+    interaction.response.defer.assert_awaited_once()
+    interaction.followup.send.assert_awaited_once_with(
         "지금은 등록 기간이 아닙니다.", ephemeral=True
     )
 
@@ -105,8 +122,9 @@ def test_register_parses_and_stores_on_success(monkeypatch):
 
     asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
 
+    interaction.response.defer.assert_awaited_once()
     upsert_mock.assert_awaited_once()
-    interaction.response.send_message.assert_awaited_once_with("탐사자 캐릭터를 등록했습니다.")
+    interaction.followup.send.assert_awaited_once_with("탐사자 캐릭터를 등록했습니다.")
 
 
 def test_register_reports_parse_error(monkeypatch):
@@ -123,7 +141,8 @@ def test_register_reports_parse_error(monkeypatch):
 
     asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
 
-    interaction.response.send_message.assert_awaited_once_with(
+    interaction.response.defer.assert_awaited_once()
+    interaction.followup.send.assert_awaited_once_with(
         "시트를 읽을 수 없습니다: '이름' 항목을 시트에서 찾을 수 없습니다.", ephemeral=True
     )
 

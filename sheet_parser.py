@@ -69,7 +69,10 @@ def _parse_skills(ws, labels: dict) -> dict:
 
 
 def parse_character_sheet(file_bytes: bytes) -> dict:
-    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as exc:
+        raise ValueError("xlsx 파일이 아니거나 파일이 손상되었습니다.") from exc
     ws = wb.active
     labels = _build_label_index(ws)
 
@@ -80,6 +83,9 @@ def parse_character_sheet(file_bytes: bytes) -> dict:
             raise ValueError(f"'{label}' 항목을 시트에서 찾을 수 없습니다.")
         value = _adjacent_value(ws, cell)
         result[field] = _to_int(value, label) if field in _INT_FIELDS else value
+
+    if not result.get("name") or not str(result["name"]).strip():
+        raise ValueError("'이름' 값이 비어 있습니다.")
 
     result["skills"] = _parse_skills(ws, labels)
     return result

@@ -86,3 +86,14 @@ def test_parse_character_sheet_ignores_zero_valued_skills():
 def test_parse_character_sheet_skills_default_empty_when_none_present():
     result = parse_character_sheet(_build_workbook(_BASE_FIELDS))
     assert result["skills"] == {}
+
+
+def test_parse_character_sheet_non_xlsx_raises_value_error():
+    with pytest.raises(ValueError, match="xlsx"):
+        parse_character_sheet(b"not an xlsx file at all")
+
+
+def test_parse_character_sheet_empty_name_raises():
+    fields = dict(_BASE_FIELDS, 이름="   ")
+    with pytest.raises(ValueError, match="이름"):
+        parse_character_sheet(_build_workbook(fields))

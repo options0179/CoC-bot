@@ -11,16 +11,20 @@ pytestmark = pytest.mark.skipif(not TEST_DSN, reason="TEST_DATABASE_URL not set"
 
 
 @pytest.fixture
-def pool():
-    async def _setup():
-        p = await create_pool(TEST_DSN)
-        async with p.acquire() as conn:
-            await conn.execute("TRUNCATE guild_settings, characters")
-        return p
+def run_db():
+    def _run(body):
+        async def _main():
+            pool = await create_pool(TEST_DSN)
+            async with pool.acquire() as conn:
+                await conn.execute("TRUNCATE guild_settings, characters")
+            try:
+                return await body(pool)
+            finally:
+                await pool.close()
 
-    p = asyncio.run(_setup())
-    yield p
-    asyncio.run(p.close())
+        return asyncio.run(_main())
+
+    return _run
 
 
 SAMPLE_CHARACTER = {
@@ -53,26 +57,38 @@ SAMPLE_CHARACTER = {
 }
 
 
-def test_get_character_returns_none_when_absent(pool):
-    assert asyncio.run(get_character(pool, guild_id=1, user_id=100)) is None
+def test_get_character_returns_none_when_absent(run_db):
+    async def _body(pool):
+        assert await get_character(pool, guild_id=1, user_id=100) is None
+
+    run_db(_body)
 
 
-def test_upsert_then_get_roundtrips(pool):
-    asyncio.run(upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER))
-    result = asyncio.run(get_character(pool, guild_id=1, user_id=100))
-    assert result["name"] == "탐사자"
-    assert result["int"] == 80
-    assert result["skills"] == {"회계": 5, "심리학": 10}
+def test_upsert_then_get_roundtrips(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["name"] == "탐사자"
+        assert result["int"] == 80
+        assert result["skills"] == {"회계": 5, "심리학": 10}
+
+    run_db(_body)
 
 
-def test_upsert_overwrites_existing(pool):
-    asyncio.run(upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER))
-    updated = dict(SAMPLE_CHARACTER, name="개명한탐사자")
-    asyncio.run(upsert_character(pool, guild_id=1, user_id=100, data=updated))
-    result = asyncio.run(get_character(pool, guild_id=1, user_id=100))
-    assert result["name"] == "개명한탐사자"
+def test_upsert_overwrites_existing(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        updated = dict(SAMPLE_CHARACTER, name="개명한탐사자")
+        await upsert_character(pool, guild_id=1, user_id=100, data=updated)
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["name"] == "개명한탐사자"
+
+    run_db(_body)
 
 
-def test_characters_scoped_by_guild(pool):
-    asyncio.run(upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER))
-    assert asyncio.run(get_character(pool, guild_id=2, user_id=100)) is None
+def test_characters_scoped_by_guild(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        assert await get_character(pool, guild_id=2, user_id=100) is None
+
+    run_db(_body)

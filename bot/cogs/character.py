@@ -1,3 +1,5 @@
+import asyncio
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -19,6 +21,7 @@ class CharacterCog(commands.Cog):
         self.pool = bot.pool
 
     @app_commands.command(name="캐릭터등록열기", description="캐릭터 등록창을 엽니다.")
+    @app_commands.guild_only()
     async def open_window(self, interaction: discord.Interaction) -> None:
         opened = await open_registration(self.pool, interaction.guild_id, interaction.user.id)
         if not opened:
@@ -29,6 +32,7 @@ class CharacterCog(commands.Cog):
         await interaction.response.send_message("캐릭터 등록창을 열었습니다.")
 
     @app_commands.command(name="캐릭터등록닫기", description="캐릭터 등록창을 닫습니다.")
+    @app_commands.guild_only()
     async def close_window(self, interaction: discord.Interaction) -> None:
         closed = await close_registration(self.pool, interaction.guild_id, interaction.user.id)
         if not closed:
@@ -40,27 +44,35 @@ class CharacterCog(commands.Cog):
 
     @app_commands.command(name="캐릭터등록", description="엑셀 캐릭터시트를 등록합니다.")
     @app_commands.describe(파일="캐릭터시트 xlsx 파일")
+    @app_commands.guild_only()
     async def register(
         self, interaction: discord.Interaction, 파일: discord.Attachment
     ) -> None:
-        if not await is_registration_open(self.pool, interaction.guild_id):
+        if not 파일.filename.lower().endswith(".xlsx"):
             await interaction.response.send_message(
+                "xlsx 파일만 업로드할 수 있습니다.", ephemeral=True
+            )
+            return
+        await interaction.response.defer()
+        if not await is_registration_open(self.pool, interaction.guild_id):
+            await interaction.followup.send(
                 "지금은 등록 기간이 아닙니다.", ephemeral=True
             )
             return
         file_bytes = await 파일.read()
         try:
-            data = parse_character_sheet(file_bytes)
+            data = await asyncio.to_thread(parse_character_sheet, file_bytes)
         except ValueError as exc:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"시트를 읽을 수 없습니다: {exc}", ephemeral=True
             )
             return
         await upsert_character(self.pool, interaction.guild_id, interaction.user.id, data)
-        await interaction.response.send_message(f"{data['name']} 캐릭터를 등록했습니다.")
+        await interaction.followup.send(f"{data['name']} 캐릭터를 등록했습니다.")
 
     @app_commands.command(name="캐릭터조회", description="등록된 캐릭터를 조회합니다.")
     @app_commands.describe(유저="조회할 유저 (생략 시 본인)")
+    @app_commands.guild_only()
     async def lookup(
         self,
         interaction: discord.Interaction,
