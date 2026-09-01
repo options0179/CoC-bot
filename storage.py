@@ -138,3 +138,12 @@ async def get_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict
     if isinstance(result["skills"], str):
         result["skills"] = json.loads(result["skills"])
     return result
+
+
+async def get_skill_value(
+    pool: asyncpg.Pool, guild_id: int, user_id: int, skill_name: str
+) -> int | None:
+    character = await get_character(pool, guild_id, user_id)
+    if character is None:
+        return None
+    return character["skills"].get(skill_name)

@@ -14,3 +14,11 @@ def test_main_raises_systemexit_without_database_url(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(SystemExit):
         main_module.main()
+
+
+def test_main_raises_systemexit_without_gemini_key(monkeypatch):
+    monkeypatch.setenv("DISCORD_TOKEN", "fake-token-for-test")
+    monkeypatch.setenv("DATABASE_URL", "postgres://fake-url-for-test")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(SystemExit):
+        main_module.main()
