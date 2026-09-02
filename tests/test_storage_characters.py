@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from storage import create_pool, get_character, upsert_character
+from storage import create_pool, get_character, get_skill_value, upsert_character
 
 TEST_DSN = os.environ.get("TEST_DATABASE_URL")
 
@@ -90,5 +90,28 @@ def test_characters_scoped_by_guild(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
         assert await get_character(pool, guild_id=2, user_id=100) is None
+
+    run_db(_body)
+
+
+def test_get_skill_value_returns_value_when_present(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        assert await get_skill_value(pool, guild_id=1, user_id=100, skill_name="회계") == 5
+
+    run_db(_body)
+
+
+def test_get_skill_value_returns_none_when_character_missing(run_db):
+    async def _body(pool):
+        assert await get_skill_value(pool, guild_id=1, user_id=999, skill_name="회계") is None
+
+    run_db(_body)
+
+
+def test_get_skill_value_returns_none_when_skill_not_recorded(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        assert await get_skill_value(pool, guild_id=1, user_id=100, skill_name="항법") is None
 
     run_db(_body)
