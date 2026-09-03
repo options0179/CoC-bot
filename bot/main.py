@@ -25,6 +25,7 @@ class CoCBot(commands.Bot):
         await self.load_extension("bot.cogs.opposed")
         await self.load_extension("bot.cogs.character")
         await self.load_extension("bot.cogs.scenario")
+        await self.load_extension("bot.cogs.narration")
         await self.load_extension("bot.cogs.action")
         await self.tree.sync()
 
