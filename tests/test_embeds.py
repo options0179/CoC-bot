@@ -1,4 +1,12 @@
-from bot.embeds import character_embed, check_embed, narration_embed, opposed_embed, sanity_embed
+from bot.embeds import (
+    character_embed,
+    check_embed,
+    keeper_narration_embed,
+    narration_embed,
+    opposed_embed,
+    sanity_embed,
+    scenario_embed,
+)
 from dice import CheckResult, OpposedResult, SanityResult, SuccessLevel
 
 
@@ -83,3 +91,47 @@ def test_narration_embed_shows_summary_and_purpose():
 
     assert embed.description == "주변을 둘러본다"
     assert embed.fields[0].value == "상황을 파악하려 함"
+
+
+def test_character_embed_shows_role_badge_for_npc():
+    embed = character_embed(_sample_character(role="NPC", name="관리인"), owner_name="관리인")
+    assert embed.title == "[NPC] 관리인"
+
+
+def test_character_embed_omits_badge_for_pc():
+    embed = character_embed(_sample_character(), owner_name="탐사자")
+    assert embed.title == "탐사자"
+
+
+def test_scenario_embed_shows_title_progress_and_roster():
+    scenario = {
+        "title": "마지막 상영",
+        "keeper_user_id": 999,
+        "current_scene_index": 1,
+        "structure": [{"scene": "장면 1"}, {"scene": "장면 2"}],
+    }
+    roster = [{"name": "탐사자A"}, {"name": "탐사자B"}]
+
+    embed = scenario_embed(scenario, roster)
+
+    assert embed.title == "마지막 상영"
+    fields = {f.name: f.value for f in embed.fields}
+    assert "999" in fields["키퍼"]
+    assert fields["진행 위치"] == "장면 2 / 2"
+    assert "탐사자A" in fields["참가자(PC)"]
+
+
+def test_scenario_embed_shows_placeholder_for_empty_roster():
+    scenario = {
+        "title": "빈 시나리오", "keeper_user_id": 1,
+        "current_scene_index": 0, "structure": [{"scene": "장면 1"}],
+    }
+    embed = scenario_embed(scenario, [])
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["참가자(PC)"] == "(없음)"
+
+
+def test_keeper_narration_embed_shows_scene_and_line():
+    embed = keeper_narration_embed("장면 1. 일상", "늦은 오후입니다.")
+    assert embed.title == "장면 1. 일상"
+    assert embed.description == "늦은 오후입니다."

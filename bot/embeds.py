@@ -62,7 +62,10 @@ def opposed_embed(
 
 
 def character_embed(character: dict, owner_name: str) -> discord.Embed:
-    embed = discord.Embed(title=character.get("name") or owner_name)
+    name = character.get("name") or owner_name
+    role = character.get("role", "PC")
+    title = f"[{role}] {name}" if role != "PC" else name
+    embed = discord.Embed(title=title)
     embed.add_field(name="직업", value=character.get("occupation") or "-", inline=False)
     embed.add_field(
         name="특성치",
@@ -93,3 +96,20 @@ def narration_embed(action_summary: str, purpose: str) -> discord.Embed:
     if purpose:
         embed.add_field(name="목적", value=purpose)
     return embed
+
+
+def scenario_embed(scenario: dict, roster: list[dict]) -> discord.Embed:
+    embed = discord.Embed(title=scenario["title"], color=discord.Color.dark_gold())
+    embed.add_field(name="키퍼", value=f"<@{scenario['keeper_user_id']}>", inline=False)
+    embed.add_field(
+        name="진행 위치",
+        value=f"장면 {scenario['current_scene_index'] + 1} / {len(scenario['structure'])}",
+        inline=False,
+    )
+    names = "\n".join(c["name"] for c in roster) if roster else "(없음)"
+    embed.add_field(name="참가자(PC)", value=names, inline=False)
+    return embed
+
+
+def keeper_narration_embed(scene_title: str, line: str) -> discord.Embed:
+    return discord.Embed(title=scene_title, description=line, color=discord.Color.dark_purple())
