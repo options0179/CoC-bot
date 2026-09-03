@@ -178,3 +178,91 @@ def test_lookup_sends_embed_for_self_when_no_target_given(monkeypatch):
     interaction.response.send_message.assert_awaited_once()
     _, kwargs = interaction.response.send_message.call_args
     assert kwargs["embed"].title == "탐사자"
+
+
+class _FakeRole:
+    def __init__(self, value):
+        self.value = value
+
+
+def test_register_scenario_character_rejects_non_keeper(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_scenario_by_title",
+        AsyncMock(return_value={"id": 1, "keeper_user_id": 999}),
+    )
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction(user_id=100)
+
+    asyncio.run(
+        cog.register_scenario_character.callback(
+            cog, interaction, "시나리오", _FakeRole("NPC"), _make_attachment()
+        )
+    )
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "이 시나리오의 키퍼만 등록할 수 있습니다.", ephemeral=True
+    )
+
+
+def test_register_scenario_character_rejects_unknown_scenario(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_scenario_by_title", AsyncMock(return_value=None)
+    )
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(
+        cog.register_scenario_character.callback(
+            cog, interaction, "없음", _FakeRole("NPC"), _make_attachment()
+        )
+    )
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "등록된 시나리오가 아닙니다.", ephemeral=True
+    )
+
+
+def test_register_scenario_character_rejects_non_xlsx(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_scenario_by_title",
+        AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
+    )
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction(user_id=100)
+
+    asyncio.run(
+        cog.register_scenario_character.callback(
+            cog, interaction, "시나리오", _FakeRole("NPC"), _make_attachment(filename="sheet.txt")
+        )
+    )
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "xlsx 파일만 업로드할 수 있습니다.", ephemeral=True
+    )
+
+
+def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_scenario_by_title",
+        AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
+    )
+    monkeypatch.setattr(
+        "bot.cogs.character.parse_character_sheet",
+        lambda file_bytes: {"name": "관리인", "skills": {}},
+    )
+    upsert_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.character.upsert_character", upsert_mock)
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction(user_id=100)
+
+    asyncio.run(
+        cog.register_scenario_character.callback(
+            cog, interaction, "시나리오", _FakeRole("NPC"), _make_attachment()
+        )
+    )
+
+    upsert_mock.assert_awaited_once_with(
+        cog.pool, interaction.guild_id, interaction.user.id,
+        {"name": "관리인", "skills": {}}, role="NPC", scenario_id=7,
+    )
+    interaction.followup.send.assert_awaited_once_with("관리인 (NPC)을(를) 등록했습니다.")

@@ -16,7 +16,9 @@ def run_db():
         async def _main():
             pool = await create_pool(TEST_DSN)
             async with pool.acquire() as conn:
-                await conn.execute("TRUNCATE guild_settings, characters")
+                await conn.execute(
+                    "TRUNCATE scenario_participants, characters, scenarios, guild_settings"
+                )
             try:
                 return await body(pool)
             finally:
@@ -113,5 +115,87 @@ def test_get_skill_value_returns_none_when_skill_not_recorded(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
         assert await get_skill_value(pool, guild_id=1, user_id=100, skill_name="항법") is None
+
+    run_db(_body)
+
+
+def test_upsert_defaults_to_pc_role(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["role"] == "PC"
+        assert result["scenario_id"] is None
+
+    run_db(_body)
+
+
+def test_upsert_npc_requires_scenario_and_allows_multiple_per_guild(run_db):
+    async def _body(pool):
+        from storage import create_scenario
+
+        scenario_id = await create_scenario(
+            pool, guild_id=1, title="시나리오", keeper_user_id=1, doc_url="https://x", structure=[]
+        )
+        npc_data = dict(SAMPLE_CHARACTER, name="관리인")
+        await upsert_character(
+            pool, guild_id=1, user_id=1, data=npc_data, role="NPC", scenario_id=scenario_id
+        )
+        another_npc = dict(SAMPLE_CHARACTER, name="건물주")
+        await upsert_character(
+            pool, guild_id=1, user_id=1, data=another_npc, role="NPC", scenario_id=scenario_id
+        )
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT name FROM characters WHERE scenario_id = $1 ORDER BY name", scenario_id
+            )
+        assert [r["name"] for r in rows] == ["건물주", "관리인"]
+
+    run_db(_body)
+
+
+def test_upsert_npc_same_name_same_scenario_overwrites(run_db):
+    async def _body(pool):
+        from storage import create_scenario
+
+        scenario_id = await create_scenario(
+            pool, guild_id=1, title="시나리오", keeper_user_id=1, doc_url="https://x", structure=[]
+        )
+        data_v1 = dict(SAMPLE_CHARACTER, name="관리인", edu=50)
+        await upsert_character(
+            pool, guild_id=1, user_id=1, data=data_v1, role="NPC", scenario_id=scenario_id
+        )
+        data_v2 = dict(SAMPLE_CHARACTER, name="관리인", edu=70)
+        await upsert_character(
+            pool, guild_id=1, user_id=1, data=data_v2, role="NPC", scenario_id=scenario_id
+        )
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT edu FROM characters WHERE scenario_id = $1 AND name = '관리인'", scenario_id
+            )
+        assert [r["edu"] for r in rows] == [70]
+
+    run_db(_body)
+
+
+def test_pc_and_npc_with_same_name_coexist(run_db):
+    async def _body(pool):
+        from storage import create_scenario
+
+        scenario_id = await create_scenario(
+            pool, guild_id=1, title="시나리오", keeper_user_id=1, doc_url="https://x", structure=[]
+        )
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        npc_data = dict(SAMPLE_CHARACTER, name="탐사자")
+        await upsert_character(
+            pool, guild_id=1, user_id=1, data=npc_data, role="NPC", scenario_id=scenario_id
+        )
+
+        pc = await get_character(pool, guild_id=1, user_id=100)
+        assert pc["role"] == "PC"
+        async with pool.acquire() as conn:
+            npc_row = await conn.fetchrow(
+                "SELECT * FROM characters WHERE scenario_id = $1 AND role = 'NPC'", scenario_id
+            )
+        assert npc_row["name"] == "탐사자"
 
     run_db(_body)
