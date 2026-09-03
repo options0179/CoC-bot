@@ -16,7 +16,9 @@ def run_db():
         async def _main():
             pool = await create_pool(TEST_DSN)
             async with pool.acquire() as conn:
-                await conn.execute("TRUNCATE guild_settings, characters")
+                await conn.execute(
+                    "TRUNCATE scenario_participants, characters, scenarios, guild_settings"
+                )
             try:
                 return await body(pool)
             finally:
