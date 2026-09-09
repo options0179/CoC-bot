@@ -3,9 +3,10 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+import aiohttp
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 import storage
 
@@ -30,11 +31,24 @@ class CoCBot(commands.Bot):
         await self.load_extension("bot.cogs.narration")
         await self.load_extension("bot.cogs.action")
         await self.tree.sync()
+        if os.environ.get("RENDER_EXTERNAL_URL"):
+            self._self_ping.start()
 
     async def close(self) -> None:
+        self._self_ping.cancel()
         if self.pool is not None:
             await self.pool.close()
         await super().close()
+
+    @tasks.loop(minutes=10)
+    async def _self_ping(self) -> None:
+        url = os.environ["RENDER_EXTERNAL_URL"]
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url):
+                    pass
+        except aiohttp.ClientError:
+            logger.exception("Self-ping failed")
 
 
 bot = CoCBot()

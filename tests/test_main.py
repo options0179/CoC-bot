@@ -1,3 +1,4 @@
+import asyncio
 import http.client
 import socket
 
@@ -42,3 +43,53 @@ def test_run_health_check_server_responds_200(monkeypatch):
     conn.request("GET", "/")
     resp = conn.getresponse()
     assert resp.status == 200
+
+
+class _FakeResponse:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakeSession:
+    def __init__(self):
+        self.requested_url = None
+
+    def get(self, url):
+        self.requested_url = url
+        return _FakeResponse()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def test_self_ping_requests_external_url(monkeypatch):
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
+    fake_session = _FakeSession()
+    monkeypatch.setattr(main_module.aiohttp, "ClientSession", lambda: fake_session)
+
+    asyncio.run(main_module.CoCBot._self_ping.coro(None))
+
+    assert fake_session.requested_url == "https://coc-bot.onrender.com"
+
+
+def test_self_ping_swallows_client_error(monkeypatch):
+    class _FailingSession:
+        def get(self, url):
+            raise main_module.aiohttp.ClientError("boom")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
+    monkeypatch.setattr(main_module.aiohttp, "ClientSession", lambda: _FailingSession())
+
+    asyncio.run(main_module.CoCBot._self_ping.coro(None))  # must not raise
