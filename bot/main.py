@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import discord
 from discord import app_commands
@@ -51,6 +53,23 @@ async def on_app_command_error(
         await interaction.response.send_message(message, ephemeral=True)
 
 
+def _run_health_check_server() -> None:
+    port = os.environ.get("PORT")
+    if not port:
+        return
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, format: str, *args) -> None:
+            pass
+
+    server = HTTPServer(("0.0.0.0", int(port)), _Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+
 def main() -> None:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
@@ -59,6 +78,7 @@ def main() -> None:
         raise SystemExit("DATABASE_URL 환경변수가 설정되지 않았습니다.")
     if not os.environ.get("GEMINI_API_KEY"):
         raise SystemExit("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
+    _run_health_check_server()
     bot.run(token)
 
 
