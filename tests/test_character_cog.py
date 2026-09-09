@@ -1,7 +1,9 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from bot.cogs.character import CharacterCog
+from bot.cogs.character import CharacterCog, _extract_sheet_id
+
+_SHEET_URL = "https://docs.google.com/spreadsheets/d/abc123/edit?usp=sharing"
 
 
 def _make_interaction(guild_id=1, user_id=100):
@@ -71,23 +73,46 @@ def test_close_window_rejected_for_non_opener(monkeypatch):
     )
 
 
-def _make_attachment(file_bytes: bytes = b"fake-bytes", filename: str = "sheet.xlsx"):
-    attachment = MagicMock()
-    attachment.filename = filename
-    attachment.read = AsyncMock(return_value=file_bytes)
-    return attachment
+class _FakeResponse:
+    status = 200
+
+    async def read(self):
+        return b"fake-bytes"
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
 
 
-def test_register_rejected_for_non_xlsx_file(monkeypatch):
+class _FakeSession:
+    def get(self, url):
+        return _FakeResponse()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def test_extract_sheet_id_from_share_link():
+    assert _extract_sheet_id(_SHEET_URL) == "abc123"
+
+
+def test_extract_sheet_id_returns_none_for_non_sheets_url():
+    assert _extract_sheet_id("https://example.com") is None
+
+
+def test_register_rejected_for_non_sheet_link(monkeypatch):
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
 
-    asyncio.run(
-        cog.register.callback(cog, interaction, _make_attachment(filename="sheet.txt"))
-    )
+    asyncio.run(cog.register.callback(cog, interaction, "https://example.com"))
 
     interaction.response.send_message.assert_awaited_once_with(
-        "xlsx 파일만 업로드할 수 있습니다.", ephemeral=True
+        "구글 스프레드시트 링크가 아닙니다.", ephemeral=True
     )
     interaction.response.defer.assert_not_awaited()
 
@@ -99,7 +124,7 @@ def test_register_rejected_when_window_closed(monkeypatch):
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
 
-    asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
+    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
 
     interaction.response.defer.assert_awaited_once()
     interaction.followup.send.assert_awaited_once_with(
@@ -108,6 +133,7 @@ def test_register_rejected_when_window_closed(monkeypatch):
 
 
 def test_register_parses_and_stores_on_success(monkeypatch):
+    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
     monkeypatch.setattr(
         "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
     )
@@ -120,14 +146,37 @@ def test_register_parses_and_stores_on_success(monkeypatch):
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
 
-    asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
+    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
 
     interaction.response.defer.assert_awaited_once()
     upsert_mock.assert_awaited_once()
     interaction.followup.send.assert_awaited_once_with("탐사자 캐릭터를 등록했습니다.")
 
 
+def test_register_reports_fetch_error(monkeypatch):
+    class _FailingResponse(_FakeResponse):
+        status = 404
+
+    class _FailingSession(_FakeSession):
+        def get(self, url):
+            return _FailingResponse()
+
+    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FailingSession())
+    monkeypatch.setattr(
+        "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
+    )
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
+
+    interaction.followup.send.assert_awaited_once_with(
+        "시트를 가져올 수 없습니다. 링크 공개 설정을 확인하세요.", ephemeral=True
+    )
+
+
 def test_register_reports_parse_error(monkeypatch):
+    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
     monkeypatch.setattr(
         "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
     )
@@ -139,7 +188,7 @@ def test_register_reports_parse_error(monkeypatch):
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
 
-    asyncio.run(cog.register.callback(cog, interaction, _make_attachment()))
+    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
 
     interaction.response.defer.assert_awaited_once()
     interaction.followup.send.assert_awaited_once_with(
@@ -195,7 +244,7 @@ def test_register_scenario_character_rejects_non_keeper(monkeypatch):
 
     asyncio.run(
         cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), _make_attachment()
+            cog, interaction, "시나리오", _FakeRole("NPC"), _SHEET_URL
         )
     )
 
@@ -213,7 +262,7 @@ def test_register_scenario_character_rejects_unknown_scenario(monkeypatch):
 
     asyncio.run(
         cog.register_scenario_character.callback(
-            cog, interaction, "없음", _FakeRole("NPC"), _make_attachment()
+            cog, interaction, "없음", _FakeRole("NPC"), _SHEET_URL
         )
     )
 
@@ -222,7 +271,7 @@ def test_register_scenario_character_rejects_unknown_scenario(monkeypatch):
     )
 
 
-def test_register_scenario_character_rejects_non_xlsx(monkeypatch):
+def test_register_scenario_character_rejects_non_sheet_link(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.character.get_scenario_by_title",
         AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
@@ -232,16 +281,17 @@ def test_register_scenario_character_rejects_non_xlsx(monkeypatch):
 
     asyncio.run(
         cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), _make_attachment(filename="sheet.txt")
+            cog, interaction, "시나리오", _FakeRole("NPC"), "https://example.com"
         )
     )
 
     interaction.response.send_message.assert_awaited_once_with(
-        "xlsx 파일만 업로드할 수 있습니다.", ephemeral=True
+        "구글 스프레드시트 링크가 아닙니다.", ephemeral=True
     )
 
 
 def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):
+    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
     monkeypatch.setattr(
         "bot.cogs.character.get_scenario_by_title",
         AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
@@ -257,7 +307,7 @@ def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):
 
     asyncio.run(
         cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), _make_attachment()
+            cog, interaction, "시나리오", _FakeRole("NPC"), _SHEET_URL
         )
     )
 
