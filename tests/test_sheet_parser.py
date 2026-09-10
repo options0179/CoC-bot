@@ -3,7 +3,7 @@ import io
 import openpyxl
 import pytest
 
-from sheet_parser import parse_character_sheet
+from sheet_parser import _compute_mov, parse_character_sheet
 
 _BASE_FIELDS = {
     "이름": "탐사자",
@@ -20,7 +20,6 @@ _BASE_FIELDS = {
     "교육": 70,
     "크기": 50,
     "지능": 80,
-    "이동력": 8,
 }
 
 
@@ -97,3 +96,20 @@ def test_parse_character_sheet_empty_name_raises():
     fields = dict(_BASE_FIELDS, 이름="   ")
     with pytest.raises(ValueError, match="이름"):
         parse_character_sheet(_build_workbook(fields))
+
+
+def test_compute_mov_both_below_size_is_slow():
+    assert _compute_mov(str_=30, dex=30, siz=50, age=25) == 7
+
+
+def test_compute_mov_both_above_size_is_fast():
+    assert _compute_mov(str_=60, dex=60, siz=50, age=25) == 9
+
+
+def test_compute_mov_mixed_is_average():
+    assert _compute_mov(str_=30, dex=60, siz=50, age=25) == 8
+
+
+def test_compute_mov_applies_age_penalty():
+    assert _compute_mov(str_=60, dex=60, siz=50, age=45) == 8
+    assert _compute_mov(str_=60, dex=60, siz=50, age=85) == 4
