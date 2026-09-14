@@ -1,5 +1,7 @@
 import asyncpg
 import json
+import secrets
+from datetime import datetime, timedelta, timezone
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS guild_settings (
@@ -70,6 +72,16 @@ CREATE TABLE IF NOT EXISTS scenario_participants (
     scenario_id INTEGER NOT NULL REFERENCES scenarios(id),
     character_id INTEGER NOT NULL REFERENCES characters(id),
     PRIMARY KEY (scenario_id, character_id)
+);
+
+CREATE TABLE IF NOT EXISTS registration_tokens (
+    token TEXT PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    discord_user_id BIGINT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'PC',
+    scenario_id INTEGER REFERENCES scenarios(id),
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ
 );
 """
 
@@ -295,4 +307,52 @@ async def advance_narration_position(
             scene_index,
             line_index,
             scenario_id,
+        )
+
+
+_TOKEN_TTL = timedelta(minutes=30)
+
+
+async def create_registration_token(
+    pool: asyncpg.Pool,
+    guild_id: int,
+    user_id: int,
+    role: str = "PC",
+    scenario_id: int | None = None,
+) -> str:
+    token = secrets.token_urlsafe(24)
+    expires_at = datetime.now(timezone.utc) + _TOKEN_TTL
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO registration_tokens
+                (token, guild_id, discord_user_id, role, scenario_id, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            token,
+            guild_id,
+            user_id,
+            role,
+            scenario_id,
+            expires_at,
+        )
+    return token
+
+
+async def get_valid_registration_token(pool: asyncpg.Pool, token: str) -> dict | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT * FROM registration_tokens
+            WHERE token = $1 AND used_at IS NULL AND expires_at > now()
+            """,
+            token,
+        )
+    return dict(row) if row else None
+
+
+async def consume_registration_token(pool: asyncpg.Pool, token: str) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE registration_tokens SET used_at = now() WHERE token = $1", token
         )
