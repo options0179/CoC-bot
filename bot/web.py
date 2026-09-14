@@ -1,3 +1,5 @@
+import json
+
 from aiohttp import web
 
 from storage import consume_registration_token, get_valid_registration_token, upsert_character
@@ -29,7 +31,12 @@ async def _submit_registration(request: web.Request) -> web.Response:
 
     try:
         payload = await request.json()
-    except Exception:
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return web.json_response(
+            {"ok": False, "error": "요청 형식이 올바르지 않습니다."}, status=400
+        )
+
+    if not isinstance(payload, dict):
         return web.json_response(
             {"ok": False, "error": "요청 형식이 올바르지 않습니다."}, status=400
         )
@@ -37,6 +44,7 @@ async def _submit_registration(request: web.Request) -> web.Response:
     name = payload.get("name")
     if not name or not str(name).strip():
         return web.json_response({"ok": False, "error": "이름을 입력해주세요."}, status=400)
+    payload["name"] = str(name).strip()
 
     data = {field: payload.get(field) for field in _TEXT_FIELDS}
     for field in _INT_FIELDS:
@@ -50,7 +58,10 @@ async def _submit_registration(request: web.Request) -> web.Response:
             return web.json_response(
                 {"ok": False, "error": f"{field}은(는) 숫자여야 합니다."}, status=400
             )
-    data["skills"] = payload.get("skills") or {}
+    skills = payload.get("skills") or {}
+    if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):
+        return web.json_response({"ok": False, "error": "기능 값은 숫자여야 합니다."}, status=400)
+    data["skills"] = skills
 
     await upsert_character(
         pool,

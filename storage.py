@@ -313,6 +313,11 @@ async def advance_narration_position(
 _TOKEN_TTL = timedelta(minutes=30)
 
 
+# ponytail: KPC/NPC tokens need a real scenario_id — NULL scenario_id + role
+# in ('KPC','NPC') means the character upsert's (scenario_id, name) conflict
+# target never matches, so every submission inserts a duplicate row instead
+# of upserting. Phase 3 (which issues these tokens) must always pass a real
+# scenario_id for KPC/NPC roles.
 async def create_registration_token(
     pool: asyncpg.Pool,
     guild_id: int,

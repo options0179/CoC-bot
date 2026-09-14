@@ -146,6 +146,114 @@ def test_post_registration_rejects_non_numeric_attribute(monkeypatch):
     asyncio.run(_body())
 
 
+def test_post_registration_rejects_non_dict_skills(monkeypatch):
+    async def _body():
+        monkeypatch.setattr(
+            "bot.web.get_valid_registration_token",
+            AsyncMock(
+                return_value={
+                    "guild_id": 1,
+                    "discord_user_id": 100,
+                    "role": "PC",
+                    "scenario_id": None,
+                }
+            ),
+        )
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok", json={"name": "탐사자", "skills": ["x"]}
+            )
+            assert resp.status == 400
+            body = await resp.json()
+            assert body["ok"] is False
+            assert "기능" in body["error"]
+
+    asyncio.run(_body())
+
+
+def test_post_registration_rejects_non_int_skill_value(monkeypatch):
+    async def _body():
+        monkeypatch.setattr(
+            "bot.web.get_valid_registration_token",
+            AsyncMock(
+                return_value={
+                    "guild_id": 1,
+                    "discord_user_id": 100,
+                    "role": "PC",
+                    "scenario_id": None,
+                }
+            ),
+        )
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "skills": {"회계": "abc"}},
+            )
+            assert resp.status == 400
+            body = await resp.json()
+            assert body["ok"] is False
+            assert "기능" in body["error"]
+
+    asyncio.run(_body())
+
+
+def test_post_registration_rejects_non_dict_body(monkeypatch):
+    async def _body():
+        monkeypatch.setattr(
+            "bot.web.get_valid_registration_token",
+            AsyncMock(
+                return_value={
+                    "guild_id": 1,
+                    "discord_user_id": 100,
+                    "role": "PC",
+                    "scenario_id": None,
+                }
+            ),
+        )
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/register/tok", json=["a", "b"])
+            assert resp.status == 400
+            body = await resp.json()
+            assert body["ok"] is False
+
+    asyncio.run(_body())
+
+
+def test_post_registration_strips_name_whitespace(monkeypatch):
+    async def _body():
+        monkeypatch.setattr(
+            "bot.web.get_valid_registration_token",
+            AsyncMock(
+                return_value={
+                    "guild_id": 1,
+                    "discord_user_id": 100,
+                    "role": "PC",
+                    "scenario_id": None,
+                }
+            ),
+        )
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok", json={"name": "  탐사자  "}
+            )
+            assert resp.status == 200
+            body = await resp.json()
+            assert body == {"ok": True, "name": "탐사자"}
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["name"] == "탐사자"
+
+    asyncio.run(_body())
+
+
 def test_post_registration_succeeds_and_consumes_token(monkeypatch):
     async def _body():
         monkeypatch.setattr(

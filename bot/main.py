@@ -3,6 +3,7 @@ import os
 
 import aiohttp
 import discord
+from aiohttp import web
 from discord import app_commands
 from discord.ext import commands, tasks
 
@@ -19,10 +20,13 @@ class CoCBot(commands.Bot):
     def __init__(self) -> None:
         super().__init__(command_prefix="!coc-unused!", intents=INTENTS)
         self.pool = None
-        self._web_runner: aiohttp.web.AppRunner | None = None
+        self._web_runner: web.AppRunner | None = None
 
     async def setup_hook(self) -> None:
         self.pool = await storage.create_pool(os.environ["DATABASE_URL"])
+        # Bind the port before Discord setup (extension loads, tree.sync) so
+        # Render's health check succeeds even if Discord-side startup is slow.
+        await self._start_web_server()
         await self.load_extension("bot.cogs.check")
         await self.load_extension("bot.cogs.sanity")
         await self.load_extension("bot.cogs.opposed")
@@ -31,7 +35,6 @@ class CoCBot(commands.Bot):
         await self.load_extension("bot.cogs.narration")
         await self.load_extension("bot.cogs.action")
         await self.tree.sync()
-        await self._start_web_server()
         if os.environ.get("RENDER_EXTERNAL_URL"):
             self._self_ping.start()
 
@@ -40,9 +43,9 @@ class CoCBot(commands.Bot):
         if not port:
             return
         app = create_app(self.pool)
-        self._web_runner = aiohttp.web.AppRunner(app)
+        self._web_runner = web.AppRunner(app)
         await self._web_runner.setup()
-        site = aiohttp.web.TCPSite(self._web_runner, "0.0.0.0", int(port))
+        site = web.TCPSite(self._web_runner, "0.0.0.0", int(port))
         await site.start()
 
     async def close(self) -> None:
