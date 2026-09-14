@@ -25,6 +25,15 @@ ATTRIBUTE_LABELS = {
 
 _INT_FIELDS = set(ATTRIBUTE_LABELS.values()) | {"age"}
 
+_INFO_VALUE_OFFSET = 2
+_ATTRIBUTE_VALUE_OFFSET = 1
+_SKILL_VALUE_OFFSET = 2
+_SKILL_CHECKBOX_MARKERS = {"□", "■"}
+
+# Still the reference skill-name list for intent_analyzer.py's Gemini prompt
+# and validation — no longer used to gate which sheet rows count as skills
+# (see _parse_skills), since real sheets abbreviate names differently and
+# players add custom skills this fixed set can't anticipate.
 SKILL_NAMES = {
     "감정", "고고학", "관찰력", "근접전투(격투)", "기계수리", "도약", "듣기", "말주변",
     "매혹", "법률", "변장", "사격(권총)", "사격(라이플/샷건)", "설득", "손놀림", "수영",
@@ -46,8 +55,8 @@ def _build_label_index(ws) -> dict:
     return index
 
 
-def _adjacent_value(ws, cell):
-    return ws.cell(row=cell.row, column=cell.column + 1).value
+def _value_at_offset(ws, cell, offset: int):
+    return ws.cell(row=cell.row, column=cell.column + offset).value
 
 
 def _to_int(value, label: str) -> int:
@@ -56,15 +65,21 @@ def _to_int(value, label: str) -> int:
     return int(value)
 
 
-def _parse_skills(ws, labels: dict) -> dict:
+def _parse_skills(ws) -> dict:
     skills = {}
-    for name in SKILL_NAMES:
-        cell = labels.get(name)
-        if cell is None:
-            continue
-        value = _adjacent_value(ws, cell)
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
-            skills[name] = int(value)
+    for row in ws.iter_rows():
+        for cell in row:
+            if not isinstance(cell.value, str) or cell.column <= 1:
+                continue
+            name = cell.value.strip()
+            if not name:
+                continue
+            marker = ws.cell(row=cell.row, column=cell.column - 1).value
+            if marker not in _SKILL_CHECKBOX_MARKERS:
+                continue
+            value = _value_at_offset(ws, cell, _SKILL_VALUE_OFFSET)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
+                skills.setdefault(name, int(value))
     return skills
 
 
@@ -77,15 +92,19 @@ def parse_character_sheet(file_bytes: bytes) -> dict:
     labels = _build_label_index(ws)
 
     result = {}
-    for label, field in {**INFO_LABELS, **ATTRIBUTE_LABELS}.items():
+    fields_with_offset = [
+        *((label, field, _INFO_VALUE_OFFSET) for label, field in INFO_LABELS.items()),
+        *((label, field, _ATTRIBUTE_VALUE_OFFSET) for label, field in ATTRIBUTE_LABELS.items()),
+    ]
+    for label, field, offset in fields_with_offset:
         cell = labels.get(label)
         if cell is None:
             raise ValueError(f"'{label}' 항목을 시트에서 찾을 수 없습니다.")
-        value = _adjacent_value(ws, cell)
+        value = _value_at_offset(ws, cell, offset)
         result[field] = _to_int(value, label) if field in _INT_FIELDS else value
 
     if not result.get("name") or not str(result["name"]).strip():
         raise ValueError("'이름' 값이 비어 있습니다.")
 
-    result["skills"] = _parse_skills(ws, labels)
+    result["skills"] = _parse_skills(ws)
     return result
