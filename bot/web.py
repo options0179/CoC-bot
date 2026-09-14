@@ -1,13 +1,25 @@
 import json
+from pathlib import Path
 
 from aiohttp import web
 
+from sheet_parser import SKILL_NAMES
 from storage import consume_registration_token, get_valid_registration_token, upsert_character
 
 POOL_KEY: web.AppKey = web.AppKey("pool")
 
 _TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace"]
 _INT_FIELDS = ["age", "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov"]
+
+_WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+
+async def _get_skills(request: web.Request) -> web.Response:
+    return web.json_response(sorted(SKILL_NAMES))
+
+
+async def _serve_registration_form(request: web.Request) -> web.Response:
+    return web.FileResponse(_WEB_DIST / "index.html")
 
 
 async def _health(request: web.Request) -> web.Response:
@@ -84,4 +96,7 @@ def create_app(pool) -> web.Application:
     app.router.add_get("/health", _health)
     app.router.add_get("/api/register/{token}", _get_registration_status)
     app.router.add_post("/api/register/{token}", _submit_registration)
+    app.router.add_get("/api/skills", _get_skills)
+    app.router.add_get("/register/{token}", _serve_registration_form)
+    app.router.add_static("/assets/", path=_WEB_DIST / "assets")
     return app

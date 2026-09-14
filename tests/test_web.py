@@ -334,3 +334,37 @@ def test_post_registration_ignores_body_supplied_identity_fields(monkeypatch):
         assert kwargs["scenario_id"] is None  # token's scenario_id, not the body's 42
 
     asyncio.run(_body())
+
+
+def test_get_skills_returns_sorted_skill_names(monkeypatch):
+    async def _body():
+        monkeypatch.setattr("bot.web.SKILL_NAMES", {"회계", "심리학", "감정"})
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.get("/api/skills")
+            assert resp.status == 200
+            body = await resp.json()
+            assert body == ["감정", "심리학", "회계"]
+
+    asyncio.run(_body())
+
+
+def test_register_form_serves_index_html():
+    async def _body():
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.get("/register/sometoken")
+            assert resp.status == 200
+            assert resp.content_type == "text/html"
+
+    asyncio.run(_body())
+
+
+def test_assets_route_is_registered():
+    async def _body():
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.get("/assets/does-not-exist.js")
+            assert resp.status == 404
+
+    asyncio.run(_body())
