@@ -4,6 +4,8 @@ from aiohttp import web
 
 from storage import consume_registration_token, get_valid_registration_token, upsert_character
 
+POOL_KEY: web.AppKey = web.AppKey("pool")
+
 _TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace"]
 _INT_FIELDS = ["age", "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov"]
 
@@ -14,7 +16,7 @@ async def _health(request: web.Request) -> web.Response:
 
 async def _get_registration_status(request: web.Request) -> web.Response:
     token = request.match_info["token"]
-    row = await get_valid_registration_token(request.app["pool"], token)
+    row = await get_valid_registration_token(request.app[POOL_KEY], token)
     if row is None:
         return web.json_response({"valid": False}, status=404)
     return web.json_response({"valid": True, "role": row["role"]})
@@ -22,7 +24,7 @@ async def _get_registration_status(request: web.Request) -> web.Response:
 
 async def _submit_registration(request: web.Request) -> web.Response:
     token = request.match_info["token"]
-    pool = request.app["pool"]
+    pool = request.app[POOL_KEY]
     token_row = await get_valid_registration_token(pool, token)
     if token_row is None:
         return web.json_response(
@@ -77,7 +79,7 @@ async def _submit_registration(request: web.Request) -> web.Response:
 
 def create_app(pool) -> web.Application:
     app = web.Application()
-    app["pool"] = pool
+    app[POOL_KEY] = pool
     app.router.add_get("/", _health)
     app.router.add_get("/health", _health)
     app.router.add_get("/api/register/{token}", _get_registration_status)
