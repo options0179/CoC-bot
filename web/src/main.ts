@@ -152,7 +152,15 @@ function renderForm(token: string): void {
       return;
     }
 
-    const result = await response.json();
+    let result: { ok: boolean; name?: string; error?: string };
+    try {
+      result = await response.json();
+    } catch {
+      formError.textContent = "서버 응답을 처리할 수 없습니다. 다시 시도해주세요.";
+      formError.hidden = false;
+      return;
+    }
+
     if (!response.ok || !result.ok) {
       formError.textContent = result.error ?? "등록에 실패했습니다.";
       formError.hidden = false;
