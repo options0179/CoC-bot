@@ -84,7 +84,7 @@ CoC-Bot/
 ├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
 ├── bot/
 │   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, 웹 서버 기동, cog 로더, 전역 에러 핸들러
-│   ├── web.py                    # 캐릭터 등록 API를 서빙하는 aiohttp 웹 서버 (HTML 폼은 아직 없음, 이후 단계)
+│   ├── web.py                    # 캐릭터 등록 API + 폼 페이지(web/dist)를 서빙하는 aiohttp 웹 서버
 │   ├── embeds.py                # 판정/캐릭터/시나리오/낭독 결과 → 한국어 Discord 임베드 포맷
 │   └── cogs/
 │       ├── check.py             # /판정 커맨드 + PushView(재도전 버튼)
@@ -115,7 +115,7 @@ CoC-Bot/
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
 | `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 웹 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
-| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동하며, 아직 HTML 폼은 제공하지 않는다(JSON API만) |
+| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하고, `web/dist`에 빌드된 폼 페이지(`GET /register/{token}`)와 정적 자산(`GET /assets/...`), 기능명 목록(`GET /api/skills`)을 서빙하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동한다 |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`, 캐릭터(역할 배지 포함)/시나리오/Keeper 낭독 딕셔너리를 한국어 Discord 임베드로 포맷 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
