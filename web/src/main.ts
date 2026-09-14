@@ -95,12 +95,14 @@ function renderForm(token: string): void {
     nameInput.type = "text";
     nameInput.dataset.role = "skill-name";
     nameInput.placeholder = "기능명";
+    nameInput.ariaLabel = "기능명";
     nameInput.value = name;
 
     const valueInput = document.createElement("input");
     valueInput.type = "number";
     valueInput.dataset.role = "skill-value";
     valueInput.placeholder = "값";
+    valueInput.ariaLabel = "값";
     valueInput.value = value;
 
     const removeButton = document.createElement("button");

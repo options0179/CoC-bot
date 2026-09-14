@@ -18,7 +18,7 @@ async def _get_skills(request: web.Request) -> web.Response:
     return web.json_response(sorted(SKILL_NAMES))
 
 
-async def _serve_registration_form(request: web.Request) -> web.Response:
+async def _serve_registration_form(request: web.Request) -> web.FileResponse:
     return web.FileResponse(_WEB_DIST / "index.html")
 
 
@@ -72,6 +72,11 @@ async def _submit_registration(request: web.Request) -> web.Response:
             return web.json_response(
                 {"ok": False, "error": f"{field}은(는) 숫자여야 합니다."}, status=400
             )
+        if not (0 <= data[field] <= 999):
+            return web.json_response(
+                {"ok": False, "error": f"{field}은(는) 0에서 999 사이의 값이어야 합니다."},
+                status=400,
+            )
     skills = payload.get("skills") or {}
     if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):
         return web.json_response({"ok": False, "error": "기능 값은 숫자여야 합니다."}, status=400)
@@ -98,5 +103,6 @@ def create_app(pool) -> web.Application:
     app.router.add_post("/api/register/{token}", _submit_registration)
     app.router.add_get("/api/skills", _get_skills)
     app.router.add_get("/register/{token}", _serve_registration_form)
-    app.router.add_static("/assets/", path=_WEB_DIST / "assets")
+    if (_WEB_DIST / "assets").is_dir():
+        app.router.add_static("/assets/", path=_WEB_DIST / "assets")
     return app

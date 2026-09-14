@@ -173,6 +173,18 @@ docker run -e DISCORD_TOKEN=발급받은_토큰 -e DATABASE_URL=postgres://user:
 Neon 등 무료/저가 티어의 관리형 Postgres를 `DATABASE_URL`로 연결해 쓰면 되고, 봇 프로세스
 자체는 여전히 1 vCPU / 512MB급 저사양 인스턴스로 충분하다.
 
+## 웹 폼 수정 시 주의사항
+
+`web/src/` 아래를 수정했다면 반드시 다음을 실행해서 빌드 결과물을 커밋해야 한다:
+
+```bash
+cd web && npm run build
+```
+
+봇은 `web/dist/`에 커밋된 결과물을 서빙하지, `web/src/`를 직접 서빙하지 않는다.
+빌드 후 `web/dist/` 변경분을 커밋하지 않으면 배포된 폼은 아무 에러 없이 예전
+JS/CSS를 계속 서빙한다.
+
 ## 테스트
 
 ```bash
