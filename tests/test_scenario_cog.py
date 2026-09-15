@@ -154,42 +154,6 @@ def test_start_reports_when_channel_taken(monkeypatch):
     )
 
 
-def test_join_adds_own_character_to_roster(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.scenario.get_scenario_by_channel", AsyncMock(return_value={"id": 7})
-    )
-    monkeypatch.setattr(
-        "bot.cogs.scenario.get_character",
-        AsyncMock(return_value={"id": 42, "name": "탐사자"}),
-    )
-    join_mock = AsyncMock()
-    monkeypatch.setattr("bot.cogs.scenario.join_scenario", join_mock)
-    cog = ScenarioCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.join.callback(cog, interaction))
-
-    join_mock.assert_awaited_once_with(cog.pool, 7, 42)
-    interaction.response.send_message.assert_awaited_once_with(
-        "탐사자이(가) 시나리오에 참가했습니다."
-    )
-
-
-def test_join_reports_when_no_character(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.scenario.get_scenario_by_channel", AsyncMock(return_value={"id": 7})
-    )
-    monkeypatch.setattr("bot.cogs.scenario.get_character", AsyncMock(return_value=None))
-    cog = ScenarioCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.join.callback(cog, interaction))
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "등록된 캐릭터가 없습니다.", ephemeral=True
-    )
-
-
 def test_info_reports_when_channel_unbound(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.scenario.get_scenario_by_channel", AsyncMock(return_value=None)

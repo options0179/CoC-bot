@@ -20,7 +20,6 @@ ATTRIBUTE_LABELS = {
     "교육": "edu",
     "크기": "siz",
     "지능": "int",
-    "이동력": "mov",
 }
 
 _INT_FIELDS = set(ATTRIBUTE_LABELS.values()) | {"age"}
@@ -56,6 +55,25 @@ def _to_int(value, label: str) -> int:
     return int(value)
 
 
+def _compute_mov(str_: int, dex: int, siz: int, age: int) -> int:
+    if str_ < siz and dex < siz:
+        mov = 7
+    elif str_ > siz and dex > siz:
+        mov = 9
+    else:
+        mov = 8
+    age_penalty = max(0, (min(age, 89) - 30) // 10)
+    return mov - age_penalty
+
+
+def _compute_hp_max(con: int, siz: int) -> int:
+    return (con + siz) // 10
+
+
+def _compute_mp_max(pow_: int) -> int:
+    return pow_ // 5
+
+
 def _parse_skills(ws, labels: dict) -> dict:
     skills = {}
     for name in SKILL_NAMES:
@@ -87,5 +105,9 @@ def parse_character_sheet(file_bytes: bytes) -> dict:
     if not result.get("name") or not str(result["name"]).strip():
         raise ValueError("'이름' 값이 비어 있습니다.")
 
+    result["mov"] = _compute_mov(result["str"], result["dex"], result["siz"], result["age"])
+    result["hp_max"] = result["hp_current"] = _compute_hp_max(result["con"], result["siz"])
+    result["mp_max"] = result["mp_current"] = _compute_mp_max(result["pow"])
+    result["san_starting"] = result["san_current"] = result["pow"]
     result["skills"] = _parse_skills(ws, labels)
     return result

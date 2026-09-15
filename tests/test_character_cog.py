@@ -21,58 +21,6 @@ def _make_bot():
     return bot
 
 
-def test_open_window_succeeds(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.open_registration", AsyncMock(return_value=True)
-    )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.open_window.callback(cog, interaction))
-
-    interaction.response.send_message.assert_awaited_once_with("캐릭터 등록창을 열었습니다.")
-
-
-def test_open_window_rejected_when_already_open(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.open_registration", AsyncMock(return_value=False)
-    )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.open_window.callback(cog, interaction))
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "이미 다른 사람이 등록창을 열어뒀습니다.", ephemeral=True
-    )
-
-
-def test_close_window_succeeds_for_opener(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.close_registration", AsyncMock(return_value=True)
-    )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.close_window.callback(cog, interaction))
-
-    interaction.response.send_message.assert_awaited_once_with("캐릭터 등록창을 닫았습니다.")
-
-
-def test_close_window_rejected_for_non_opener(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.close_registration", AsyncMock(return_value=False)
-    )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.close_window.callback(cog, interaction))
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "본인이 연 등록창만 닫을 수 있습니다.", ephemeral=True
-    )
-
-
 class _FakeResponse:
     status = 200
 
@@ -117,9 +65,6 @@ def test_build_registration_url_falls_back_to_localhost(monkeypatch):
 
 
 def test_register_issues_token_link_when_no_link_given(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
-    )
     token_mock = AsyncMock(return_value="tok123")
     monkeypatch.setattr("bot.cogs.character.create_registration_token", token_mock)
     monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
@@ -136,20 +81,6 @@ def test_register_issues_token_link_when_no_link_given(monkeypatch):
     interaction.response.defer.assert_not_awaited()
 
 
-def test_register_token_branch_rejected_when_window_closed(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.is_registration_open", AsyncMock(return_value=False)
-    )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.register.callback(cog, interaction, None))
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "지금은 등록 기간이 아닙니다.", ephemeral=True
-    )
-
-
 def test_register_rejected_for_non_sheet_link(monkeypatch):
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
@@ -162,26 +93,8 @@ def test_register_rejected_for_non_sheet_link(monkeypatch):
     interaction.response.defer.assert_not_awaited()
 
 
-def test_register_rejected_when_window_closed(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.is_registration_open", AsyncMock(return_value=False)
-    )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
-
-    interaction.response.defer.assert_awaited_once()
-    interaction.followup.send.assert_awaited_once_with(
-        "지금은 등록 기간이 아닙니다.", ephemeral=True
-    )
-
-
 def test_register_parses_and_stores_on_success(monkeypatch):
     monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
-    monkeypatch.setattr(
-        "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
-    )
     monkeypatch.setattr(
         "bot.cogs.character.parse_character_sheet",
         lambda file_bytes: {"name": "탐사자", "skills": {}},
@@ -207,9 +120,6 @@ def test_register_reports_fetch_error(monkeypatch):
             return _FailingResponse()
 
     monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FailingSession())
-    monkeypatch.setattr(
-        "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
-    )
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
 
@@ -222,9 +132,6 @@ def test_register_reports_fetch_error(monkeypatch):
 
 def test_register_reports_parse_error(monkeypatch):
     monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
-    monkeypatch.setattr(
-        "bot.cogs.character.is_registration_open", AsyncMock(return_value=True)
-    )
 
     def _raise(file_bytes):
         raise ValueError("'이름' 항목을 시트에서 찾을 수 없습니다.")

@@ -1,41 +1,21 @@
-import math
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from bot.embeds import keeper_narration_embed
-from storage import advance_narration_position, get_roster, get_scenario_by_channel
+from storage import advance_narration_position, get_scenario_by_channel
 
 
 class NarrationView(discord.ui.View):
-    def __init__(self, roster_user_ids: set[int], keeper_user_id: int) -> None:
+    def __init__(self, keeper_user_id: int) -> None:
         super().__init__(timeout=None)
-        self.roster_user_ids = roster_user_ids
         self.keeper_user_id = keeper_user_id
-        self.votes: set[int] = set()
-
-    def _required_votes(self) -> int:
-        denominator = len(self.roster_user_ids) + 1
-        return math.ceil(denominator * 2 / 3)
 
     @discord.ui.button(label="다음", style=discord.ButtonStyle.primary)
     async def advance(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        user_id = interaction.user.id
-        if user_id != self.keeper_user_id and user_id not in self.roster_user_ids:
+        if interaction.user.id != self.keeper_user_id:
             await interaction.response.send_message(
-                "이 시나리오의 참가자만 투표할 수 있습니다.", ephemeral=True
-            )
-            return
-        if user_id in self.votes:
-            await interaction.response.send_message("이미 동의했습니다.", ephemeral=True)
-            return
-        self.votes.add(user_id)
-        required = self._required_votes()
-        if len(self.votes) < required:
-            await interaction.response.send_message(
-                f"동의 {len(self.votes)}/{len(self.roster_user_ids) + 1} ({required}표 필요)",
-                ephemeral=True,
+                "키퍼만 진행할 수 있습니다.", ephemeral=True
             )
             return
         button.disabled = True
@@ -77,13 +57,11 @@ class NarrationCog(commands.Cog):
             )
             return
 
-        roster = await get_roster(self.pool, scenario["id"])
-        roster_user_ids = {character["discord_user_id"] for character in roster}
         keeper_user_id = scenario["keeper_user_id"]
 
         scene = structure[scene_index]
         embed = keeper_narration_embed(scene["scene"], scene["lines"][line_index])
-        view = NarrationView(roster_user_ids, keeper_user_id)
+        view = NarrationView(keeper_user_id)
         await interaction.response.send_message(embed=embed, view=view)
 
         while True:
@@ -98,7 +76,7 @@ class NarrationCog(commands.Cog):
             await advance_narration_position(self.pool, scenario["id"], scene_index, line_index)
             scene = structure[scene_index]
             embed = keeper_narration_embed(scene["scene"], scene["lines"][line_index])
-            view = NarrationView(roster_user_ids, keeper_user_id)
+            view = NarrationView(keeper_user_id)
             await interaction.followup.send(embed=embed, view=view)
 
 

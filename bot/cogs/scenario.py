@@ -11,11 +11,9 @@ from scenario_parser import parse_scenario_html
 from storage import (
     bind_scenario_channel,
     create_scenario,
-    get_character,
     get_roster,
     get_scenario_by_channel,
     get_scenario_by_title,
-    join_scenario,
 )
 
 _EXPORT_URL_TEMPLATE = "https://docs.google.com/document/d/{doc_id}/export?format=html"
@@ -98,24 +96,6 @@ class ScenarioCog(commands.Cog):
             )
             return
         await interaction.response.send_message(f"이 채널을 '{시나리오}' 시나리오에 배정했습니다.")
-
-    @app_commands.command(
-        name="시나리오참가", description="본인의 PC를 현재 채널 시나리오에 참가시킵니다."
-    )
-    @app_commands.guild_only()
-    async def join(self, interaction: discord.Interaction) -> None:
-        scenario = await get_scenario_by_channel(self.pool, interaction.channel_id)
-        if scenario is None:
-            await interaction.response.send_message(
-                "이 채널에 배정된 시나리오가 없습니다.", ephemeral=True
-            )
-            return
-        character = await get_character(self.pool, interaction.guild_id, interaction.user.id)
-        if character is None:
-            await interaction.response.send_message("등록된 캐릭터가 없습니다.", ephemeral=True)
-            return
-        await join_scenario(self.pool, scenario["id"], character["id"])
-        await interaction.response.send_message(f"{character['name']}이(가) 시나리오에 참가했습니다.")
 
     @app_commands.command(name="시나리오조회", description="현재 채널의 시나리오 정보를 조회합니다.")
     @app_commands.guild_only()

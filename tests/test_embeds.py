@@ -33,6 +33,19 @@ def test_sanity_embed_shows_loss_and_remaining():
     assert "49" in values
 
 
+def test_sanity_embed_shows_no_warnings_by_default():
+    result = SanityResult(roll=20, current_san=50, success=True, loss=1, remaining_san=49)
+    embed = sanity_embed(result)
+    assert not any(f.name == "⚠️ 경고" for f in embed.fields)
+
+
+def test_sanity_embed_shows_warnings():
+    result = SanityResult(roll=80, current_san=50, success=False, loss=10, remaining_san=40)
+    embed = sanity_embed(result, warnings=["일시적 광기 판정 필요"])
+    warning_fields = [f.value for f in embed.fields if f.name == "⚠️ 경고"]
+    assert warning_fields == ["일시적 광기 판정 필요"]
+
+
 def test_opposed_embed_shows_winner():
     a = CheckResult(roll=10, skill=60, level=SuccessLevel.EXTREME)
     b = CheckResult(roll=50, skill=60, level=SuccessLevel.REGULAR)
@@ -101,6 +114,20 @@ def test_character_embed_shows_role_badge_for_npc():
 def test_character_embed_omits_badge_for_pc():
     embed = character_embed(_sample_character(), owner_name="탐사자")
     assert embed.title == "탐사자"
+
+
+def test_character_embed_shows_hp_mp_san():
+    character = _sample_character(
+        hp_current=11, hp_max=11, mp_current=11, mp_max=11, san_current=55, san_starting=55
+    )
+    embed = character_embed(character, owner_name="탐사자")
+    vitals_field = next(f for f in embed.fields if f.name == "HP / MP / SAN")
+    assert vitals_field.value == "HP 11/11  MP 11/11  SAN 55/55"
+
+
+def test_character_embed_shows_retired_badge():
+    embed = character_embed(_sample_character(is_retired=True), owner_name="탐사자")
+    assert "퇴장" in embed.title
 
 
 def test_scenario_embed_shows_title_progress_and_roster():
