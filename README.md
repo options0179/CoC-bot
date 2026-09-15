@@ -69,7 +69,9 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 **봇 기동.** `bot/main.py`의 `main()`이 `DISCORD_TOKEN`, `DATABASE_URL`, `GEMINI_API_KEY`
 환경변수를 모두 확인하고, 하나라도 없으면 기동을 중단한다. 연결되면 `CoCBot.setup_hook()`이
 가장 먼저 `storage.create_pool()`로 Postgres 커넥션 풀을 만들고(스키마도 이때
-생성/확인한다), 이어서 일곱 cog(`check`/`sanity`/`opposed`/`character`/`scenario`/
+생성/확인한다), 곧바로 `bot/web.py`의 aiohttp 웹 서버를 기동한다(Render의 헬스체크가
+Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tree.sync()`보다 먼저 포트를
+연다). 이어서 일곱 cog(`check`/`sanity`/`opposed`/`character`/`scenario`/
 `narration`/`action`)를 로드한 뒤 `tree.sync()`로 슬래시 커맨드를 Discord에 등록한다.
 
 ## 프로젝트 구조
@@ -82,7 +84,8 @@ CoC-Bot/
 ├── scenario_parser.py             # 구글독스 export?format=html → 부/장면/Keeper 낭독 파싱 (표준 라이브러리 html.parser)
 ├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
 ├── bot/
-│   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, cog 로더, 전역 에러 핸들러
+│   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, 웹 서버 기동, cog 로더, 전역 에러 핸들러
+│   ├── web.py                    # 캐릭터 등록 API + 폼 페이지(web/dist)를 서빙하는 aiohttp 웹 서버
 │   ├── embeds.py                # 판정/캐릭터/시나리오/낭독 결과 → 한국어 Discord 임베드 포맷
 │   └── cogs/
 │       ├── check.py             # /판정 커맨드 + PushView(재도전 버튼)
@@ -93,7 +96,7 @@ CoC-Bot/
 │       ├── narration.py         # /낭독시작 커맨드 + NarrationView(키퍼 전용 진행 버튼)
 │       └── action.py            # /행동 커맨드
 ├── tests/                       # bot/, dice.py, storage.py, sheet_parser.py 구조를 그대로 미러링하는 pytest 테스트
-├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl, google-generativeai)
+├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl, google-generativeai, aiohttp)
 ├── pytest.ini                    # pytest 설정 (pythonpath=.)
 ├── Dockerfile                    # 컨테이너 이미지 빌드 정의
 ├── .dockerignore                 # Docker 빌드 컨텍스트 제외 목록 (.env 등 시크릿 방지)
@@ -107,12 +110,13 @@ CoC-Bot/
 | 경로 | 역할 |
 |---|---|
 | `dice.py` | d100 판정/성공등급, 보너스·페널티 주사위, 다이스 표기(`XdY+Z`) 파서, SAN 체크, 대립판정 — 판정 계산 로직 전부가 여기 있다. |
-| `storage.py` | Postgres 스키마(`characters`, `scenarios`, `scenario_participants`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치 — DB 접근 전부가 여기 있다. |
+| `storage.py` | Postgres 스키마(`characters`, `scenarios`, `scenario_participants`, `registration_tokens`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치, 웹 등록 토큰 발급/조회/소비 — DB 접근 전부가 여기 있다. |
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
-| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
+| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 웹 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
+| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하고, `web/dist`에 빌드된 폼 페이지(`GET /register/{token}`)와 정적 자산(`GET /assets/...`), 기능명 목록(`GET /api/skills`)을 서빙하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동한다 |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`, 캐릭터(역할 배지 포함)/시나리오/Keeper 낭독 딕셔너리를 한국어 Discord 임베드로 포맷 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
@@ -131,8 +135,8 @@ CoC-Bot/
 | `tests/test_narration_view.py` | `NarrationView`의 키퍼 전용 진행 버튼 로직 테스트 |
 | `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
 | `tests/test_scenario_parser.py` | 구글독스 HTML 아웃라인 파싱, 문장 분리(대사 보존 포함) 테스트 |
-| `tests/test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
-| `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl`, `google-generativeai` |
+| `tests/test_storage_registration_tokens.py` / `test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
+| `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl`, `google-generativeai`, `aiohttp` |
 | `pytest.ini` | 프로젝트 루트를 `sys.path`에 추가해 `dice.py`/`bot` 임포트가 되도록 설정 |
 | `Dockerfile` | `python:3.12-slim` 베이스, 의존성 설치 후 소스 복사, `python -m bot.main`으로 기동 |
 | `.dockerignore` | 이미지 빌드 시 `.env`/`.git`/`.venv`/`tests/` 등을 제외해 시크릿 유출과 이미지 비대화를 방지 |
@@ -169,6 +173,18 @@ docker run -e DISCORD_TOKEN=발급받은_토큰 -e DATABASE_URL=postgres://user:
 봇을 기동하려면 Postgres가 필수다(판정 명령어만 쓰더라도 마찬가지). Railway, Supabase,
 Neon 등 무료/저가 티어의 관리형 Postgres를 `DATABASE_URL`로 연결해 쓰면 되고, 봇 프로세스
 자체는 여전히 1 vCPU / 512MB급 저사양 인스턴스로 충분하다.
+
+## 웹 폼 수정 시 주의사항
+
+`web/src/` 아래를 수정했다면 반드시 다음을 실행해서 빌드 결과물을 커밋해야 한다:
+
+```bash
+cd web && npm run build
+```
+
+봇은 `web/dist/`에 커밋된 결과물을 서빙하지, `web/src/`를 직접 서빙하지 않는다.
+빌드 후 `web/dist/` 변경분을 커밋하지 않으면 배포된 폼은 아무 에러 없이 예전
+JS/CSS를 계속 서빙한다.
 
 ## 테스트
 

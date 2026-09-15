@@ -1,0 +1,153 @@
+:root {
+  --bg: #1a1625;
+  --card: #e8dcc0;
+  --card-text: #2a2118;
+  --accent-green: #3d5c4a;
+  --accent-red: #6b2737;
+  --border: #b8a888;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background:
+    radial-gradient(ellipse at top, rgba(61, 92, 74, 0.25), transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(107, 39, 55, 0.2), transparent 60%),
+    var(--bg);
+  font-family: Georgia, "Noto Serif KR", serif;
+  color: var(--card-text);
+}
+
+.card {
+  width: 100%;
+  max-width: 640px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2rem;
+}
+
+.card h1 {
+  margin-top: 0;
+  margin-bottom: 0.25rem;
+  text-align: center;
+  font-size: 2rem;
+  letter-spacing: 0.02em;
+}
+
+.form-subtitle {
+  margin: 0 0 1.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #6b5f4a;
+}
+
+section {
+  margin-bottom: 1.5rem;
+}
+
+section h2 {
+  font-size: 1.1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+label input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: #fdf9ef;
+  font-family: inherit;
+}
+
+.field-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 1rem;
+}
+
+.attribute-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.skill-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.skill-row input {
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: #fdf9ef;
+  font-family: inherit;
+}
+
+.skill-row input[data-role="skill-name"] {
+  flex: 2;
+}
+
+.skill-row input[data-role="skill-value"] {
+  flex: 1;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  background: #fdf9ef;
+}
+
+button[type="submit"] {
+  background: var(--accent-green);
+  color: #fdf9ef;
+  border: none;
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
+}
+
+.status {
+  text-align: center;
+}
+
+.status--error {
+  color: var(--accent-red);
+  font-weight: bold;
+}
+
+.status--success {
+  color: var(--accent-green);
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+@media (max-width: 480px) {
+  .attribute-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .field-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
