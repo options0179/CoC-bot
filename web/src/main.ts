@@ -51,16 +51,19 @@ async function main(): Promise<void> {
 function renderForm(token: string): void {
   app.innerHTML = `
     <div class="card">
-      <h1>캐릭터 등록</h1>
+      <h1>탐사자 등록</h1>
+      <p class="form-subtitle">30분간 유효한 1회용 링크입니다. 신중하게 입력해주세요.</p>
       <form id="registration-form">
         <section>
           <h2>기본정보</h2>
           <label>이름 <input type="text" name="name" required /></label>
-          <label>직업 <input type="text" name="occupation" /></label>
-          <label>나이 <input type="number" name="age" /></label>
-          <label>성별 <input type="text" name="sex" /></label>
-          <label>거주지 <input type="text" name="residence" /></label>
-          <label>출생지 <input type="text" name="birthplace" /></label>
+          <div class="field-grid-2">
+            <label>직업 <input type="text" name="occupation" /></label>
+            <label>나이 <input type="number" name="age" /></label>
+            <label>성별 <input type="text" name="sex" /></label>
+            <label>거주지 <input type="text" name="residence" /></label>
+            <label>출생지 <input type="text" name="birthplace" /></label>
+          </div>
         </section>
         <section>
           <h2>특성치</h2>
