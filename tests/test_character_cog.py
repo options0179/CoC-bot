@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from bot.cogs.character import CharacterCog, _extract_sheet_id
+from bot.cogs.character import CharacterCog, _build_registration_url, _extract_sheet_id
 
 _SHEET_URL = "https://docs.google.com/spreadsheets/d/abc123/edit?usp=sharing"
 
@@ -51,6 +51,34 @@ def test_extract_sheet_id_from_share_link():
 
 def test_extract_sheet_id_returns_none_for_non_sheets_url():
     assert _extract_sheet_id("https://example.com") is None
+
+
+def test_build_registration_url_uses_render_external_url(monkeypatch):
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
+    assert _build_registration_url("abc") == "https://coc-bot.onrender.com/register/abc"
+
+
+def test_build_registration_url_falls_back_to_localhost(monkeypatch):
+    monkeypatch.delenv("RENDER_EXTERNAL_URL", raising=False)
+    monkeypatch.setenv("PORT", "9000")
+    assert _build_registration_url("abc") == "http://localhost:9000/register/abc"
+
+
+def test_register_issues_token_link_when_no_link_given(monkeypatch):
+    token_mock = AsyncMock(return_value="tok123")
+    monkeypatch.setattr("bot.cogs.character.create_registration_token", token_mock)
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.register.callback(cog, interaction, None))
+
+    token_mock.assert_awaited_once_with(cog.pool, interaction.guild_id, interaction.user.id, role="PC")
+    interaction.response.send_message.assert_awaited_once()
+    args, kwargs = interaction.response.send_message.call_args
+    assert "https://coc-bot.onrender.com/register/tok123" in args[0]
+    assert kwargs["ephemeral"] is True
+    interaction.response.defer.assert_not_awaited()
 
 
 def test_register_rejected_for_non_sheet_link(monkeypatch):
@@ -177,6 +205,28 @@ def test_register_scenario_character_rejects_non_keeper(monkeypatch):
     )
 
 
+def test_register_scenario_character_token_branch_rejects_non_keeper(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_scenario_by_title",
+        AsyncMock(return_value={"id": 1, "keeper_user_id": 999}),
+    )
+    token_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.character.create_registration_token", token_mock)
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction(user_id=100)
+
+    asyncio.run(
+        cog.register_scenario_character.callback(
+            cog, interaction, "시나리오", _FakeRole("NPC"), None
+        )
+    )
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "이 시나리오의 키퍼만 등록할 수 있습니다.", ephemeral=True
+    )
+    token_mock.assert_not_awaited()
+
+
 def test_register_scenario_character_rejects_unknown_scenario(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.character.get_scenario_by_title", AsyncMock(return_value=None)
@@ -212,6 +262,33 @@ def test_register_scenario_character_rejects_non_sheet_link(monkeypatch):
     interaction.response.send_message.assert_awaited_once_with(
         "구글 스프레드시트 링크가 아닙니다.", ephemeral=True
     )
+
+
+def test_register_scenario_character_issues_token_link_when_no_link_given(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_scenario_by_title",
+        AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
+    )
+    token_mock = AsyncMock(return_value="tok456")
+    monkeypatch.setattr("bot.cogs.character.create_registration_token", token_mock)
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction(user_id=100)
+
+    asyncio.run(
+        cog.register_scenario_character.callback(
+            cog, interaction, "시나리오", _FakeRole("NPC"), None
+        )
+    )
+
+    token_mock.assert_awaited_once_with(
+        cog.pool, interaction.guild_id, interaction.user.id, role="NPC", scenario_id=7
+    )
+    interaction.response.send_message.assert_awaited_once()
+    args, kwargs = interaction.response.send_message.call_args
+    assert "https://coc-bot.onrender.com/register/tok456" in args[0]
+    assert kwargs["ephemeral"] is True
+    interaction.response.defer.assert_not_awaited()
 
 
 def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):
