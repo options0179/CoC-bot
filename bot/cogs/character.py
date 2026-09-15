@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 
 import aiohttp
@@ -10,6 +11,7 @@ from bot.embeds import character_embed
 from sheet_parser import parse_character_sheet
 from storage import (
     close_registration,
+    create_registration_token,
     get_character,
     get_scenario_by_title,
     is_registration_open,
@@ -24,6 +26,13 @@ _SHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
 def _extract_sheet_id(url: str) -> str | None:
     match = _SHEET_ID_RE.search(url)
     return match.group(1) if match else None
+
+
+def _build_registration_url(token: str) -> str:
+    base_url = os.environ.get(
+        "RENDER_EXTERNAL_URL", f"http://localhost:{os.environ.get('PORT', '8080')}"
+    )
+    return f"{base_url}/register/{token}"
 
 
 async def _fetch_sheet_bytes(sheet_id: str) -> tuple[bytes | None, str | None]:
@@ -65,12 +74,31 @@ class CharacterCog(commands.Cog):
             return
         await interaction.response.send_message("캐릭터 등록창을 닫았습니다.")
 
-    @app_commands.command(name="캐릭터등록", description="구글 스프레드시트 캐릭터시트를 등록합니다.")
-    @app_commands.describe(링크="캐릭터시트 구글 스프레드시트 링크(링크가 있는 모든 사용자에게 공개)")
+    @app_commands.command(name="캐릭터등록", description="캐릭터시트를 등록합니다.")
+    @app_commands.describe(
+        링크="(선택) 캐릭터시트 구글 스프레드시트 링크(링크가 있는 모든 사용자에게 공개) "
+        "— 비워두면 웹 등록 폼 링크를 대신 받습니다"
+    )
     @app_commands.guild_only()
     async def register(
-        self, interaction: discord.Interaction, 링크: str
+        self, interaction: discord.Interaction, 링크: str | None = None
     ) -> None:
+        if 링크 is None:
+            if not await is_registration_open(self.pool, interaction.guild_id):
+                await interaction.response.send_message(
+                    "지금은 등록 기간이 아닙니다.", ephemeral=True
+                )
+                return
+            token = await create_registration_token(
+                self.pool, interaction.guild_id, interaction.user.id, role="PC"
+            )
+            url = _build_registration_url(token)
+            await interaction.response.send_message(
+                f"아래 링크에서 캐릭터를 등록하세요 (30분간 유효, 1회용):\n{url}",
+                ephemeral=True,
+            )
+            return
+
         sheet_id = _extract_sheet_id(링크)
         if sheet_id is None:
             await interaction.response.send_message(
@@ -116,10 +144,13 @@ class CharacterCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(
-        name="시나리오캐릭터등록", description="시나리오의 KPC/NPC 구글 스프레드시트 캐릭터시트를 등록합니다."
+        name="시나리오캐릭터등록", description="시나리오의 KPC/NPC 캐릭터시트를 등록합니다."
     )
     @app_commands.describe(
-        시나리오="시나리오 이름", 직책="KPC 또는 NPC", 링크="캐릭터시트 구글 스프레드시트 링크(링크가 있는 모든 사용자에게 공개)"
+        시나리오="시나리오 이름",
+        직책="KPC 또는 NPC",
+        링크="(선택) 캐릭터시트 구글 스프레드시트 링크(링크가 있는 모든 사용자에게 공개) "
+        "— 비워두면 웹 등록 폼 링크를 대신 받습니다",
     )
     @app_commands.choices(
         직책=[
@@ -133,7 +164,7 @@ class CharacterCog(commands.Cog):
         interaction: discord.Interaction,
         시나리오: str,
         직책: app_commands.Choice[str],
-        링크: str,
+        링크: str | None = None,
     ) -> None:
         scenario = await get_scenario_by_title(self.pool, interaction.guild_id, 시나리오)
         if scenario is None:
@@ -144,6 +175,22 @@ class CharacterCog(commands.Cog):
                 "이 시나리오의 키퍼만 등록할 수 있습니다.", ephemeral=True
             )
             return
+
+        if 링크 is None:
+            token = await create_registration_token(
+                self.pool,
+                interaction.guild_id,
+                interaction.user.id,
+                role=직책.value,
+                scenario_id=scenario["id"],
+            )
+            url = _build_registration_url(token)
+            await interaction.response.send_message(
+                f"아래 링크에서 {직책.value}를 등록하세요 (30분간 유효, 1회용):\n{url}",
+                ephemeral=True,
+            )
+            return
+
         sheet_id = _extract_sheet_id(링크)
         if sheet_id is None:
             await interaction.response.send_message(
