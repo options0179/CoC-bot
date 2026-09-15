@@ -2,36 +2,37 @@
 
 Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)을 자동화하는
 디스코드 슬래시 커맨드 봇. 판정 명령어 자체는 여전히 상태 없이(stateless) 그 자리에서
-계산만 하지만, 이제 캐릭터시트 등록/조회 기능도 지원한다 — 플레이어가 xlsx 캐릭터시트를
-업로드하면 Postgres에 저장해두고 언제든 다시 조회할 수 있다.
+계산만 하지만, 이제 캐릭터시트 등록/조회 기능도 지원한다 — 플레이어가 구글 스프레드시트
+링크로 캐릭터시트를 등록하면 Postgres에 저장해두고 언제든 다시 조회할 수 있다.
 
 ## 커맨드
 
 - `/판정 스킬값 [보너스] [페널티]` — d100 판정, 실패 시 푸시 버튼 첨부
-- `/산정 현재san 손실식` — SAN 체크 (손실식 예: `1/1d4+1`)
+- `/산정 손실식` — 등록된 본인 캐릭터(PC)의 현재 SAN으로 SAN 체크를 굴리고 DB에 반영
+  (손실식 예: `1/1d4+1`, 손실 5 이상/직전 SAN의 1/5 이상/SAN 0 도달 시 경고 표시, 0 도달 시 자동 퇴장 처리)
 - `/대립 내스킬 상대스킬` — 대립판정
-- `/캐릭터등록열기` — 캐릭터 등록창을 연다 (연 사람만 닫을 수 있음)
-- `/캐릭터등록닫기` — 본인이 연 등록창을 닫는다
-- `/캐릭터등록 파일:<xlsx>` — 등록창이 열려있을 때 캐릭터시트를 업로드해 등록(재업로드 시 덮어쓰기)
+- `/캐릭터등록 링크:<구글 스프레드시트 URL>` — 링크 공개된 구글 스프레드시트 캐릭터시트를
+  가져와 등록(재등록 시 덮어쓰기)
 - `/캐릭터조회 [유저]` — 등록된 캐릭터 조회 (생략 시 본인)
 - `/시나리오등록 제목 링크:<구글독스 URL>` — 링크 공개된 구글독스 시나리오 문서를 가져와
   아웃라인(부/장면/Keeper 낭독)을 파싱해 등록한다
 - `/시나리오시작 시나리오` — 현재 채널을 등록된 시나리오에 배정한다(그 시나리오의 키퍼만 가능)
-- `/시나리오참가` — 본인의 PC를 현재 채널에 배정된 시나리오의 참가자 로스터에 추가한다
 - `/시나리오조회` — 현재 채널에 배정된 시나리오의 진행 상황과 참가자를 보여준다
-- `/시나리오캐릭터등록 시나리오 직책:<KPC|NPC> 파일:<xlsx>` — 그 시나리오의 키퍼만 KPC/NPC
-  캐릭터시트를 등록할 수 있다(PC와 같은 xlsx 양식)
-- `/낭독시작` — 현재 채널 시나리오의 Keeper 낭독을 문장 단위로 출력하고, 참가자(PC+키퍼)의
-  2/3가 "다음" 버튼에 동의하면 다음 문장으로 진행한다(KPC 대사는 자동화하지 않음)
+- `/시나리오캐릭터등록 시나리오 직책:<KPC|NPC> 링크:<구글 스프레드시트 URL>` — 그 시나리오의
+  키퍼만 KPC/NPC 캐릭터시트를 등록할 수 있다(PC와 같은 양식)
+- `/낭독시작` — 현재 채널 시나리오의 Keeper 낭독을 문장 단위로 출력하고, 키퍼가 "다음" 버튼을
+  누르면 다음 문장으로 진행한다(KPC 대사는 자동화하지 않음)
 - `/행동 설명` — 자유 서술 행동을 분석해 필요하면 스킬 판정을 자동으로 굴린다 (판정이 필요 없으면 서술만 응답)
 
 ## 작동 원리
 
-**상태 없는(stateless) 구조 + 선택적 데이터 저장.** 기본 판정 명령어(`/판정`, `/산정`,
-`/대립`)은 어디에도 데이터를 저장하지 않는다. 스킬값이나 현재 SAN을 커맨드 인자로
-받아 그 자리에서 계산하고 결과만 응답한다. 다만 캐릭터시트 등록 기능(`/캐릭터등록열기`,
-`/캐릭터등록닫기`, `/캐릭터등록`, `/캐릭터조회`)은 사용자의 등록된 캐릭터를 Postgres에
-저장하고 조회한다. `CoCBot.setup_hook()`이 cog를 로드하기 전에 DB 커넥션 풀부터
+**상태 없는(stateless) 구조 + 선택적 데이터 저장.** `/판정`, `/대립`은 어디에도 데이터를
+저장하지 않는다. 스킬값을 커맨드 인자로 받아 그 자리에서 계산하고 결과만 응답한다.
+`/산정`은 예외로, 손실식만 인자로 받고 현재 SAN은 DB의 등록된 PC 캐릭터에서 자동으로
+읽고 갱신한다(등록된 PC가 없으면 거부). 캐릭터시트 등록 기능(`/캐릭터등록`,
+`/캐릭터조회`)은 사용자의 등록된 캐릭터를 Postgres에
+저장하고 조회하며, 등록 시 HP/MP/SAN 최대치·시작치도 함께 계산해 저장한다.
+`CoCBot.setup_hook()`이 cog를 로드하기 전에 DB 커넥션 풀부터
 만들기 때문에, 판정 명령어만 쓰더라도 Postgres 연결은 봇을 기동하는 데 필수다 —
 `DATABASE_URL`이 없거나 접속에 실패하면 `/판정`, `/산정`, `/대립`을 포함해 봇 전체가
 뜨지 않는다. 관리형 Postgres(Railway, Supabase 등)를 `DATABASE_URL`로 연결해서 쓰면 된다.
@@ -78,7 +79,7 @@ Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tre
 ```
 CoC-Bot/
 ├── dice.py                      # CoC 7판 판정 로직 전체 (discord 비의존 순수 함수)
-├── storage.py                    # Postgres 스키마 생성 + 등록창/캐릭터 CRUD (asyncpg)
+├── storage.py                    # Postgres 스키마 생성 + 캐릭터/시나리오 CRUD (asyncpg)
 ├── sheet_parser.py                # xlsx 캐릭터시트 파싱 (openpyxl)
 ├── scenario_parser.py             # 구글독스 export?format=html → 부/장면/Keeper 낭독 파싱 (표준 라이브러리 html.parser)
 ├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
@@ -90,12 +91,12 @@ CoC-Bot/
 │       ├── check.py             # /판정 커맨드 + PushView(재도전 버튼)
 │       ├── sanity.py            # /산정 커맨드
 │       ├── opposed.py           # /대립 커맨드
-│       ├── character.py         # /캐릭터등록열기, /캐릭터등록닫기, /캐릭터등록, /캐릭터조회, /시나리오캐릭터등록 커맨드
-│       ├── scenario.py          # /시나리오등록, /시나리오시작, /시나리오참가, /시나리오조회 커맨드
-│       ├── narration.py         # /낭독시작 커맨드 + NarrationView(2/3 동의 투표 버튼)
+│       ├── character.py         # /캐릭터등록, /캐릭터조회, /시나리오캐릭터등록 커맨드
+│       ├── scenario.py          # /시나리오등록, /시나리오시작, /시나리오조회 커맨드
+│       ├── narration.py         # /낭독시작 커맨드 + NarrationView(키퍼 전용 진행 버튼)
 │       └── action.py            # /행동 커맨드
 ├── tests/                       # bot/, dice.py, storage.py, sheet_parser.py 구조를 그대로 미러링하는 pytest 테스트
-├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl, google-generativeai)
+├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl, google-generativeai, aiohttp)
 ├── pytest.ini                    # pytest 설정 (pythonpath=.)
 ├── Dockerfile                    # 컨테이너 이미지 빌드 정의
 ├── .dockerignore                 # Docker 빌드 컨텍스트 제외 목록 (.env 등 시크릿 방지)
@@ -109,7 +110,7 @@ CoC-Bot/
 | 경로 | 역할 |
 |---|---|
 | `dice.py` | d100 판정/성공등급, 보너스·페널티 주사위, 다이스 표기(`XdY+Z`) 파서, SAN 체크, 대립판정 — 판정 계산 로직 전부가 여기 있다. |
-| `storage.py` | Postgres 스키마(`guild_settings`, `characters`, `scenarios`, `scenario_participants`, `registration_tokens`) 생성, 등록창 열기/닫기/조회, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치, 등록 토큰 발급/조회/소비 — DB 접근 전부가 여기 있다. |
+| `storage.py` | Postgres 스키마(`characters`, `scenarios`, `scenario_participants`, `registration_tokens`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치, 웹 등록 토큰 발급/조회/소비 — DB 접근 전부가 여기 있다. |
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
@@ -120,9 +121,9 @@ CoC-Bot/
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
 | `bot/cogs/opposed.py` | `/대립` 슬래시 커맨드 |
-| `bot/cogs/character.py` | 캐릭터 등록창 열기/닫기, xlsx 업로드로 PC 등록(`defer()` 후 `asyncio.to_thread`로 파싱), 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능) |
-| `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오참가`(본인 PC를 로스터에 추가), `/시나리오조회` |
-| `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, `NarrationView`(참가자(PC+키퍼)의 2/3 동의로 다음 문장 진행, `PushView`와 같은 메모리 상태 패턴) |
+| `bot/cogs/character.py` | 구글 스프레드시트 링크로 PC 등록(`defer()` 후 `aiohttp`로 xlsx export fetch → `asyncio.to_thread`로 파싱), 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능) |
+| `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오조회` |
+| `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, `NarrationView`(키퍼가 "다음" 버튼을 누르면 진행, `PushView`와 같은 메모리 상태 패턴) |
 | `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 분석해 판정이 필요 없으면 서술 임베드를, 필요하면 캐릭터 스킬값을 조회해 `dice.roll_check()`로 판정한다 |
 | `tests/test_dice_check.py` | 기본 판정·성공등급·보너스/페널티 로직 테스트, `FakeRng` 결정론적 난수 테스트 헬퍼 |
 | `tests/test_dice_notation.py` | 다이스 표기 파서 테스트 |
@@ -131,10 +132,10 @@ CoC-Bot/
 | `tests/test_embeds.py` | 임베드 포맷 테스트 |
 | `tests/test_main.py` | 봇 엔트리포인트(토큰/DB URL 미설정 시 종료) 테스트 |
 | `tests/test_check_cog.py` / `test_sanity_cog.py` / `test_opposed_cog.py` / `test_character_cog.py` / `test_scenario_cog.py` / `test_narration_cog.py` | 각 슬래시 커맨드 cog 테스트 (Discord Interaction은 mock으로 대체) |
-| `tests/test_narration_view.py` | `NarrationView`의 2/3 동의 투표 로직 테스트 |
+| `tests/test_narration_view.py` | `NarrationView`의 키퍼 전용 진행 버튼 로직 테스트 |
 | `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
 | `tests/test_scenario_parser.py` | 구글독스 HTML 아웃라인 파싱, 문장 분리(대사 보존 포함) 테스트 |
-| `tests/test_storage_registration.py` / `test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
+| `tests/test_storage_registration_tokens.py` / `test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
 | `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl`, `google-generativeai`, `aiohttp` |
 | `pytest.ini` | 프로젝트 루트를 `sys.path`에 추가해 `dice.py`/`bot` 임포트가 되도록 설정 |
 | `Dockerfile` | `python:3.12-slim` 베이스, 의존성 설치 후 소스 복사, `python -m bot.main`으로 기동 |

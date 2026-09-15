@@ -4,12 +4,6 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS guild_settings (
-    guild_id BIGINT PRIMARY KEY,
-    registration_open BOOLEAN NOT NULL DEFAULT false,
-    opened_by BIGINT
-);
-
 CREATE TABLE IF NOT EXISTS characters (
     id SERIAL PRIMARY KEY,
     guild_id BIGINT NOT NULL,
@@ -62,6 +56,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
 
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'PC';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS scenario_id INTEGER REFERENCES scenarios(id);
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS is_retired BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE characters DROP CONSTRAINT IF EXISTS characters_guild_id_discord_user_id_key;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_characters_pc
     ON characters (guild_id, discord_user_id) WHERE role = 'PC';
@@ -91,49 +86,6 @@ async def create_pool(dsn: str) -> asyncpg.Pool:
     async with pool.acquire() as conn:
         await conn.execute(SCHEMA_SQL)
     return pool
-
-
-async def open_registration(pool: asyncpg.Pool, guild_id: int, user_id: int) -> bool:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT registration_open FROM guild_settings WHERE guild_id = $1", guild_id
-        )
-        if row and row["registration_open"]:
-            return False
-        await conn.execute(
-            """
-            INSERT INTO guild_settings (guild_id, registration_open, opened_by)
-            VALUES ($1, true, $2)
-            ON CONFLICT (guild_id) DO UPDATE SET registration_open = true, opened_by = $2
-            """,
-            guild_id,
-            user_id,
-        )
-        return True
-
-
-async def close_registration(pool: asyncpg.Pool, guild_id: int, user_id: int) -> bool:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT registration_open, opened_by FROM guild_settings WHERE guild_id = $1",
-            guild_id,
-        )
-        if not row or not row["registration_open"] or row["opened_by"] != user_id:
-            return False
-        await conn.execute(
-            "UPDATE guild_settings SET registration_open = false, opened_by = NULL "
-            "WHERE guild_id = $1",
-            guild_id,
-        )
-        return True
-
-
-async def is_registration_open(pool: asyncpg.Pool, guild_id: int) -> bool:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT registration_open FROM guild_settings WHERE guild_id = $1", guild_id
-        )
-        return bool(row and row["registration_open"])
 
 
 _CHARACTER_COLUMNS = [
@@ -178,6 +130,15 @@ async def upsert_character(
         await conn.execute(query, guild_id, user_id, role, scenario_id, *values)
 
 
+def _row_to_character(row) -> dict | None:
+    if row is None:
+        return None
+    result = dict(row)
+    if isinstance(result["skills"], str):
+        result["skills"] = json.loads(result["skills"])
+    return result
+
+
 async def get_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -185,12 +146,34 @@ async def get_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict
             guild_id,
             user_id,
         )
-    if row is None:
-        return None
-    result = dict(row)
-    if isinstance(result["skills"], str):
-        result["skills"] = json.loads(result["skills"])
-    return result
+    return _row_to_character(row)
+
+
+async def get_pc_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM characters WHERE guild_id = $1 AND discord_user_id = $2 AND role = 'PC'",
+            guild_id,
+            user_id,
+        )
+    return _row_to_character(row)
+
+
+async def update_san_current(
+    pool: asyncpg.Pool, guild_id: int, user_id: int, new_san: int
+) -> bool:
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            UPDATE characters SET san_current = $1, is_retired = $2, updated_at = now()
+            WHERE guild_id = $3 AND discord_user_id = $4 AND role = 'PC'
+            """,
+            new_san,
+            new_san == 0,
+            guild_id,
+            user_id,
+        )
+    return result == "UPDATE 1"
 
 
 async def get_skill_value(
@@ -263,19 +246,6 @@ async def bind_scenario_channel(
         except asyncpg.UniqueViolationError:
             return False
     return result == "UPDATE 1"
-
-
-async def join_scenario(pool: asyncpg.Pool, scenario_id: int, character_id: int) -> None:
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO scenario_participants (scenario_id, character_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-            """,
-            scenario_id,
-            character_id,
-        )
 
 
 async def get_roster(pool: asyncpg.Pool, scenario_id: int) -> list[dict]:

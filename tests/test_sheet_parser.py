@@ -3,7 +3,7 @@ import io
 import openpyxl
 import pytest
 
-from sheet_parser import parse_character_sheet
+from sheet_parser import _compute_hp_max, _compute_mov, _compute_mp_max, parse_character_sheet
 
 _BASE_FIELDS = {
     "이름": "탐사자",
@@ -20,7 +20,6 @@ _BASE_FIELDS = {
     "교육": 70,
     "크기": 50,
     "지능": 80,
-    "이동력": 8,
 }
 
 
@@ -56,6 +55,13 @@ def test_parse_character_sheet_extracts_attributes():
     assert result["siz"] == 50
     assert result["int"] == 80
     assert result["mov"] == 8
+
+
+def test_parse_character_sheet_computes_hp_mp_san():
+    result = parse_character_sheet(_build_workbook(_BASE_FIELDS))
+    assert result["hp_max"] == result["hp_current"] == 11  # (65+50)//10
+    assert result["mp_max"] == result["mp_current"] == 11  # 55//5
+    assert result["san_starting"] == result["san_current"] == 55  # == POW
 
 
 def test_parse_character_sheet_missing_label_raises():
@@ -97,3 +103,32 @@ def test_parse_character_sheet_empty_name_raises():
     fields = dict(_BASE_FIELDS, 이름="   ")
     with pytest.raises(ValueError, match="이름"):
         parse_character_sheet(_build_workbook(fields))
+
+
+def test_compute_mov_both_below_size_is_slow():
+    assert _compute_mov(str_=30, dex=30, siz=50, age=25) == 7
+
+
+def test_compute_mov_both_above_size_is_fast():
+    assert _compute_mov(str_=60, dex=60, siz=50, age=25) == 9
+
+
+def test_compute_mov_mixed_is_average():
+    assert _compute_mov(str_=30, dex=60, siz=50, age=25) == 8
+
+
+def test_compute_mov_applies_age_penalty():
+    assert _compute_mov(str_=60, dex=60, siz=50, age=45) == 8
+    assert _compute_mov(str_=60, dex=60, siz=50, age=85) == 4
+
+
+def test_compute_hp_max_rounds_down():
+    assert _compute_hp_max(con=65, siz=50) == 11
+    assert _compute_hp_max(con=64, siz=50) == 11
+    assert _compute_hp_max(con=64, siz=45) == 10
+
+
+def test_compute_mp_max_rounds_down():
+    assert _compute_mp_max(pow_=55) == 11
+    assert _compute_mp_max(pow_=59) == 11
+    assert _compute_mp_max(pow_=60) == 12

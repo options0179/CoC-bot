@@ -6,12 +6,9 @@ import pytest
 from storage import (
     bind_scenario_channel,
     create_scenario,
-    get_character,
     get_roster,
     get_scenario_by_channel,
     get_scenario_by_title,
-    join_scenario,
-    upsert_character,
 )
 
 TEST_DSN = os.environ.get("TEST_DATABASE_URL")
@@ -27,7 +24,7 @@ def run_db():
             pool = await create_pool(TEST_DSN)
             async with pool.acquire() as conn:
                 await conn.execute(
-                    "TRUNCATE scenario_participants, characters, scenarios, guild_settings"
+                    "TRUNCATE scenario_participants, characters, scenarios"
                 )
             try:
                 return await body(pool)
@@ -42,16 +39,6 @@ def run_db():
 SAMPLE_STRUCTURE = [
     {"part": "제1부", "scene": "장면 1. 일상", "lines": ["늦은 오후입니다.", "문서가 남아있습니다."]}
 ]
-
-SAMPLE_CHARACTER = {
-    "name": "탐사자", "occupation": "탐정", "age": 30, "sex": "여",
-    "residence": "서울", "birthplace": "부산",
-    "str": 50, "dex": 50, "pow": 50, "con": 50, "app": 50,
-    "edu": 50, "siz": 50, "int": 50, "mov": 8,
-    "hp_current": None, "hp_max": None, "san_current": None, "san_starting": None,
-    "mp_current": None, "mp_max": None, "damage_bonus": None, "build": None,
-    "cash": None, "assets": None, "skills": {},
-}
 
 
 def test_create_then_get_by_title(run_db):
@@ -133,35 +120,6 @@ def test_get_scenario_by_channel_returns_none_when_unbound(run_db):
             pool, guild_id=1, title="A", keeper_user_id=1, doc_url="https://x", structure=SAMPLE_STRUCTURE
         )
         assert await get_scenario_by_channel(pool, channel_id=999) is None
-
-    run_db(_body)
-
-
-def test_join_scenario_adds_character_to_roster(run_db):
-    async def _body(pool):
-        scenario_id = await create_scenario(
-            pool, guild_id=1, title="시나리오", keeper_user_id=1, doc_url="https://x", structure=[]
-        )
-        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
-        character = await get_character(pool, guild_id=1, user_id=100)
-        await join_scenario(pool, scenario_id, character["id"])
-        roster = await get_roster(pool, scenario_id)
-        assert [c["name"] for c in roster] == ["탐사자"]
-
-    run_db(_body)
-
-
-def test_join_scenario_is_idempotent(run_db):
-    async def _body(pool):
-        scenario_id = await create_scenario(
-            pool, guild_id=1, title="시나리오", keeper_user_id=1, doc_url="https://x", structure=[]
-        )
-        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
-        character = await get_character(pool, guild_id=1, user_id=100)
-        await join_scenario(pool, scenario_id, character["id"])
-        await join_scenario(pool, scenario_id, character["id"])
-        roster = await get_roster(pool, scenario_id)
-        assert len(roster) == 1
 
     run_db(_body)
 
