@@ -8,14 +8,7 @@ from discord.ext import commands
 
 from bot.embeds import character_embed
 from sheet_parser import parse_character_sheet
-from storage import (
-    close_registration,
-    get_character,
-    get_scenario_by_title,
-    is_registration_open,
-    open_registration,
-    upsert_character,
-)
+from storage import get_character, get_scenario_by_title, upsert_character
 
 _EXPORT_URL_TEMPLATE = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
 _SHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
@@ -43,28 +36,6 @@ class CharacterCog(commands.Cog):
         self.bot = bot
         self.pool = bot.pool
 
-    @app_commands.command(name="캐릭터등록열기", description="캐릭터 등록창을 엽니다.")
-    @app_commands.guild_only()
-    async def open_window(self, interaction: discord.Interaction) -> None:
-        opened = await open_registration(self.pool, interaction.guild_id, interaction.user.id)
-        if not opened:
-            await interaction.response.send_message(
-                "이미 다른 사람이 등록창을 열어뒀습니다.", ephemeral=True
-            )
-            return
-        await interaction.response.send_message("캐릭터 등록창을 열었습니다.")
-
-    @app_commands.command(name="캐릭터등록닫기", description="캐릭터 등록창을 닫습니다.")
-    @app_commands.guild_only()
-    async def close_window(self, interaction: discord.Interaction) -> None:
-        closed = await close_registration(self.pool, interaction.guild_id, interaction.user.id)
-        if not closed:
-            await interaction.response.send_message(
-                "본인이 연 등록창만 닫을 수 있습니다.", ephemeral=True
-            )
-            return
-        await interaction.response.send_message("캐릭터 등록창을 닫았습니다.")
-
     @app_commands.command(name="캐릭터등록", description="구글 스프레드시트 캐릭터시트를 등록합니다.")
     @app_commands.describe(링크="캐릭터시트 구글 스프레드시트 링크(링크가 있는 모든 사용자에게 공개)")
     @app_commands.guild_only()
@@ -78,11 +49,6 @@ class CharacterCog(commands.Cog):
             )
             return
         await interaction.response.defer()
-        if not await is_registration_open(self.pool, interaction.guild_id):
-            await interaction.followup.send(
-                "지금은 등록 기간이 아닙니다.", ephemeral=True
-            )
-            return
         file_bytes, error = await _fetch_sheet_bytes(sheet_id)
         if error is not None:
             await interaction.followup.send(error, ephemeral=True)

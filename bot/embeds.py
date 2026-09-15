@@ -29,7 +29,7 @@ def check_embed(result: CheckResult, label: str = "판정") -> discord.Embed:
     return embed
 
 
-def sanity_embed(result: SanityResult) -> discord.Embed:
+def sanity_embed(result: SanityResult, warnings: list[str] | None = None) -> discord.Embed:
     outcome = "성공" if result.success else "실패"
     embed = discord.Embed(
         title="SAN 체크",
@@ -39,6 +39,8 @@ def sanity_embed(result: SanityResult) -> discord.Embed:
     embed.add_field(name="결과", value=outcome)
     embed.add_field(name="SAN 손실", value=f"-{result.loss}")
     embed.add_field(name="남은 SAN", value=str(result.remaining_san))
+    for warning in warnings or []:
+        embed.add_field(name="⚠️ 경고", value=warning, inline=False)
     return embed
 
 
@@ -65,6 +67,8 @@ def character_embed(character: dict, owner_name: str) -> discord.Embed:
     name = character.get("name") or owner_name
     role = character.get("role", "PC")
     title = f"[{role}] {name}" if role != "PC" else name
+    if character.get("is_retired"):
+        title = f"💀 {title} (퇴장 — 영구 광기)"
     embed = discord.Embed(title=title)
     embed.add_field(name="직업", value=character.get("occupation") or "-", inline=False)
     embed.add_field(
@@ -73,6 +77,15 @@ def character_embed(character: dict, owner_name: str) -> discord.Embed:
             f"STR {character['str']} DEX {character['dex']} POW {character['pow']}\n"
             f"CON {character['con']} APP {character['app']} EDU {character['edu']}\n"
             f"SIZ {character['siz']} INT {character['int']} MOV {character['mov']}"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="HP / MP / SAN",
+        value=(
+            f"HP {character.get('hp_current')}/{character.get('hp_max')}  "
+            f"MP {character.get('mp_current')}/{character.get('mp_max')}  "
+            f"SAN {character.get('san_current')}/{character.get('san_starting')}"
         ),
         inline=False,
     )

@@ -78,7 +78,6 @@ def test_start_sends_first_line_embed(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.narration.get_scenario_by_channel", AsyncMock(return_value=scenario)
     )
-    monkeypatch.setattr("bot.cogs.narration.get_roster", AsyncMock(return_value=[]))
 
     class _NeverEndingView:
         async def wait(self):
@@ -115,7 +114,6 @@ def test_start_advances_to_next_line_after_vote(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.narration.get_scenario_by_channel", AsyncMock(return_value=scenario)
     )
-    monkeypatch.setattr("bot.cogs.narration.get_roster", AsyncMock(return_value=[]))
     advance_mock = AsyncMock()
     monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance_mock)
 
