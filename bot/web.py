@@ -1,11 +1,25 @@
 import json
+from pathlib import Path
 
 from aiohttp import web
 
+from sheet_parser import SKILL_NAMES
 from storage import consume_registration_token, get_valid_registration_token, upsert_character
+
+POOL_KEY: web.AppKey = web.AppKey("pool")
 
 _TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace"]
 _INT_FIELDS = ["age", "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov"]
+
+_WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+
+async def _get_skills(request: web.Request) -> web.Response:
+    return web.json_response(sorted(SKILL_NAMES))
+
+
+async def _serve_registration_form(request: web.Request) -> web.FileResponse:
+    return web.FileResponse(_WEB_DIST / "index.html")
 
 
 async def _health(request: web.Request) -> web.Response:
@@ -14,7 +28,7 @@ async def _health(request: web.Request) -> web.Response:
 
 async def _get_registration_status(request: web.Request) -> web.Response:
     token = request.match_info["token"]
-    row = await get_valid_registration_token(request.app["pool"], token)
+    row = await get_valid_registration_token(request.app[POOL_KEY], token)
     if row is None:
         return web.json_response({"valid": False}, status=404)
     return web.json_response({"valid": True, "role": row["role"]})
@@ -22,7 +36,7 @@ async def _get_registration_status(request: web.Request) -> web.Response:
 
 async def _submit_registration(request: web.Request) -> web.Response:
     token = request.match_info["token"]
-    pool = request.app["pool"]
+    pool = request.app[POOL_KEY]
     token_row = await get_valid_registration_token(pool, token)
     if token_row is None:
         return web.json_response(
@@ -58,6 +72,11 @@ async def _submit_registration(request: web.Request) -> web.Response:
             return web.json_response(
                 {"ok": False, "error": f"{field}은(는) 숫자여야 합니다."}, status=400
             )
+        if not (0 <= data[field] <= 999):
+            return web.json_response(
+                {"ok": False, "error": f"{field}은(는) 0에서 999 사이의 값이어야 합니다."},
+                status=400,
+            )
     skills = payload.get("skills") or {}
     if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):
         return web.json_response({"ok": False, "error": "기능 값은 숫자여야 합니다."}, status=400)
@@ -77,9 +96,13 @@ async def _submit_registration(request: web.Request) -> web.Response:
 
 def create_app(pool) -> web.Application:
     app = web.Application()
-    app["pool"] = pool
+    app[POOL_KEY] = pool
     app.router.add_get("/", _health)
     app.router.add_get("/health", _health)
     app.router.add_get("/api/register/{token}", _get_registration_status)
     app.router.add_post("/api/register/{token}", _submit_registration)
+    app.router.add_get("/api/skills", _get_skills)
+    app.router.add_get("/register/{token}", _serve_registration_form)
+    if (_WEB_DIST / "assets").is_dir():
+        app.router.add_static("/assets/", path=_WEB_DIST / "assets")
     return app
