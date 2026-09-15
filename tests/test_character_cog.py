@@ -298,6 +298,28 @@ def test_register_scenario_character_rejects_non_keeper(monkeypatch):
     )
 
 
+def test_register_scenario_character_token_branch_rejects_non_keeper(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.character.get_scenario_by_title",
+        AsyncMock(return_value={"id": 1, "keeper_user_id": 999}),
+    )
+    token_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.character.create_registration_token", token_mock)
+    cog = CharacterCog(bot=_make_bot())
+    interaction = _make_interaction(user_id=100)
+
+    asyncio.run(
+        cog.register_scenario_character.callback(
+            cog, interaction, "시나리오", _FakeRole("NPC"), None
+        )
+    )
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "이 시나리오의 키퍼만 등록할 수 있습니다.", ephemeral=True
+    )
+    token_mock.assert_not_awaited()
+
+
 def test_register_scenario_character_rejects_unknown_scenario(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.character.get_scenario_by_title", AsyncMock(return_value=None)
@@ -359,6 +381,7 @@ def test_register_scenario_character_issues_token_link_when_no_link_given(monkey
     args, kwargs = interaction.response.send_message.call_args
     assert "https://coc-bot.onrender.com/register/tok456" in args[0]
     assert kwargs["ephemeral"] is True
+    interaction.response.defer.assert_not_awaited()
 
 
 def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):

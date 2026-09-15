@@ -29,9 +29,10 @@ def _extract_sheet_id(url: str) -> str | None:
 
 
 def _build_registration_url(token: str) -> str:
-    base_url = os.environ.get(
-        "RENDER_EXTERNAL_URL", f"http://localhost:{os.environ.get('PORT', '8080')}"
-    )
+    base_url = (
+        os.environ.get("RENDER_EXTERNAL_URL")
+        or f"http://localhost:{os.environ.get('PORT', '8080')}"
+    ).rstrip("/")
     return f"{base_url}/register/{token}"
 
 

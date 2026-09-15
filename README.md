@@ -2,8 +2,8 @@
 
 Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)을 자동화하는
 디스코드 슬래시 커맨드 봇. 판정 명령어 자체는 여전히 상태 없이(stateless) 그 자리에서
-계산만 하지만, 이제 캐릭터시트 등록/조회 기능도 지원한다 — 플레이어가 xlsx 캐릭터시트를
-업로드하면 Postgres에 저장해두고 언제든 다시 조회할 수 있다.
+계산만 하지만, 이제 캐릭터시트 등록/조회 기능도 지원한다 — 플레이어가 구글 스프레드시트
+링크나 웹 등록 폼으로 캐릭터시트를 등록하면 Postgres에 저장해두고 언제든 다시 조회할 수 있다.
 
 ## 커맨드
 
@@ -121,7 +121,7 @@ CoC-Bot/
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
 | `bot/cogs/opposed.py` | `/대립` 슬래시 커맨드 |
-| `bot/cogs/character.py` | 캐릭터 등록창 열기/닫기, 구글시트 링크로 PC 등록(`defer()` 후 `asyncio.to_thread`로 파싱) 또는 링크 생략 시 웹 등록 폼 토큰 링크 발급, 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능, 마찬가지로 링크 생략 시 토큰 링크 발급) |
+| `bot/cogs/character.py` | 캐릭터 등록창 열기/닫기, 구글시트 링크로 PC 등록(`defer()` 후 `asyncio.to_thread`로 파싱) 또는 링크 생략 시 웹 등록 폼 토큰 링크 발급(`RENDER_EXTERNAL_URL` 기준, 로컬은 `http://localhost:$PORT`로 대체), 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능, 마찬가지로 링크 생략 시 토큰 링크 발급) |
 | `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오참가`(본인 PC를 로스터에 추가), `/시나리오조회` |
 | `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, `NarrationView`(참가자(PC+키퍼)의 2/3 동의로 다음 문장 진행, `PushView`와 같은 메모리 상태 패턴) |
 | `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 분석해 판정이 필요 없으면 서술 임베드를, 필요하면 캐릭터 스킬값을 조회해 `dice.roll_check()`로 판정한다 |
