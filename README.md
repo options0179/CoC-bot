@@ -68,7 +68,9 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 **봇 기동.** `bot/main.py`의 `main()`이 `DISCORD_TOKEN`, `DATABASE_URL`, `GEMINI_API_KEY`
 환경변수를 모두 확인하고, 하나라도 없으면 기동을 중단한다. 연결되면 `CoCBot.setup_hook()`이
 가장 먼저 `storage.create_pool()`로 Postgres 커넥션 풀을 만들고(스키마도 이때
-생성/확인한다), 이어서 일곱 cog(`check`/`sanity`/`opposed`/`character`/`scenario`/
+생성/확인한다), 곧바로 `bot/web.py`의 aiohttp 웹 서버를 기동한다(Render의 헬스체크가
+Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tree.sync()`보다 먼저 포트를
+연다). 이어서 일곱 cog(`check`/`sanity`/`opposed`/`character`/`scenario`/
 `narration`/`action`)를 로드한 뒤 `tree.sync()`로 슬래시 커맨드를 Discord에 등록한다.
 
 ## 프로젝트 구조
@@ -81,7 +83,8 @@ CoC-Bot/
 ├── scenario_parser.py             # 구글독스 export?format=html → 부/장면/Keeper 낭독 파싱 (표준 라이브러리 html.parser)
 ├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
 ├── bot/
-│   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, cog 로더, 전역 에러 핸들러
+│   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, 웹 서버 기동, cog 로더, 전역 에러 핸들러
+│   ├── web.py                    # 캐릭터 등록 API를 서빙하는 aiohttp 웹 서버 (HTML 폼은 아직 없음, 이후 단계)
 │   ├── embeds.py                # 판정/캐릭터/시나리오/낭독 결과 → 한국어 Discord 임베드 포맷
 │   └── cogs/
 │       ├── check.py             # /판정 커맨드 + PushView(재도전 버튼)
@@ -106,12 +109,13 @@ CoC-Bot/
 | 경로 | 역할 |
 |---|---|
 | `dice.py` | d100 판정/성공등급, 보너스·페널티 주사위, 다이스 표기(`XdY+Z`) 파서, SAN 체크, 대립판정 — 판정 계산 로직 전부가 여기 있다. |
-| `storage.py` | Postgres 스키마(`guild_settings`, `characters`, `scenarios`, `scenario_participants`) 생성, 등록창 열기/닫기/조회, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치 — DB 접근 전부가 여기 있다. |
+| `storage.py` | Postgres 스키마(`guild_settings`, `characters`, `scenarios`, `scenario_participants`, `registration_tokens`) 생성, 등록창 열기/닫기/조회, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치, 등록 토큰 발급/조회/소비 — DB 접근 전부가 여기 있다. |
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
-| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
+| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 웹 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
+| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동하며, 아직 HTML 폼은 제공하지 않는다(JSON API만) |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`, 캐릭터(역할 배지 포함)/시나리오/Keeper 낭독 딕셔너리를 한국어 Discord 임베드로 포맷 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
@@ -131,7 +135,7 @@ CoC-Bot/
 | `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
 | `tests/test_scenario_parser.py` | 구글독스 HTML 아웃라인 파싱, 문장 분리(대사 보존 포함) 테스트 |
 | `tests/test_storage_registration.py` / `test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
-| `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl`, `google-generativeai` |
+| `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl`, `google-generativeai`, `aiohttp` |
 | `pytest.ini` | 프로젝트 루트를 `sys.path`에 추가해 `dice.py`/`bot` 임포트가 되도록 설정 |
 | `Dockerfile` | `python:3.12-slim` 베이스, 의존성 설치 후 소스 복사, `python -m bot.main`으로 기동 |
 | `.dockerignore` | 이미지 빌드 시 `.env`/`.git`/`.venv`/`tests/` 등을 제외해 시크릿 유출과 이미지 비대화를 방지 |

@@ -1,14 +1,14 @@
 import logging
 import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import aiohttp
 import discord
+from aiohttp import web
 from discord import app_commands
 from discord.ext import commands, tasks
 
 import storage
+from bot.web import create_app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("coc-bot")
@@ -20,9 +20,13 @@ class CoCBot(commands.Bot):
     def __init__(self) -> None:
         super().__init__(command_prefix="!coc-unused!", intents=INTENTS)
         self.pool = None
+        self._web_runner: web.AppRunner | None = None
 
     async def setup_hook(self) -> None:
         self.pool = await storage.create_pool(os.environ["DATABASE_URL"])
+        # Bind the port before Discord setup (extension loads, tree.sync) so
+        # Render's health check succeeds even if Discord-side startup is slow.
+        await self._start_web_server()
         await self.load_extension("bot.cogs.check")
         await self.load_extension("bot.cogs.sanity")
         await self.load_extension("bot.cogs.opposed")
@@ -34,8 +38,20 @@ class CoCBot(commands.Bot):
         if os.environ.get("RENDER_EXTERNAL_URL"):
             self._self_ping.start()
 
+    async def _start_web_server(self) -> None:
+        port = os.environ.get("PORT")
+        if not port:
+            return
+        app = create_app(self.pool)
+        self._web_runner = web.AppRunner(app)
+        await self._web_runner.setup()
+        site = web.TCPSite(self._web_runner, "0.0.0.0", int(port))
+        await site.start()
+
     async def close(self) -> None:
         self._self_ping.cancel()
+        if self._web_runner is not None:
+            await self._web_runner.cleanup()
         if self.pool is not None:
             await self.pool.close()
         await super().close()
@@ -67,23 +83,6 @@ async def on_app_command_error(
         await interaction.response.send_message(message, ephemeral=True)
 
 
-def _run_health_check_server() -> None:
-    port = os.environ.get("PORT")
-    if not port:
-        return
-
-    class _Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            self.send_response(200)
-            self.end_headers()
-
-        def log_message(self, format: str, *args) -> None:
-            pass
-
-    server = HTTPServer(("0.0.0.0", int(port)), _Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-
-
 def main() -> None:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
@@ -92,7 +91,6 @@ def main() -> None:
         raise SystemExit("DATABASE_URL 환경변수가 설정되지 않았습니다.")
     if not os.environ.get("GEMINI_API_KEY"):
         raise SystemExit("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
-    _run_health_check_server()
     bot.run(token)
 
 
