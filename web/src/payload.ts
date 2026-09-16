@@ -14,6 +14,8 @@ export interface FormValues {
   siz: string;
   int: string;
   mov: string;
+  cash: string;
+  assets: string;
   skills: { name: string; value: string }[];
 }
 
@@ -33,6 +35,8 @@ export interface RegistrationPayload {
   siz: number | null;
   int: number | null;
   mov: number | null;
+  cash: string;
+  assets: string;
   skills: Record<string, number>;
 }
 
@@ -71,6 +75,8 @@ export function buildPayload(values: FormValues): RegistrationPayload {
     siz: parseIntOrNull(values.siz),
     int: parseIntOrNull(values.int),
     mov: parseIntOrNull(values.mov),
+    cash: values.cash.trim(),
+    assets: values.assets.trim(),
     skills,
   };
 }

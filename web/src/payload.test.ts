@@ -18,6 +18,8 @@ function baseValues(overrides: Partial<FormValues> = {}): FormValues {
     siz: "",
     int: "",
     mov: "",
+    cash: "",
+    assets: "",
     skills: [],
     ...overrides,
   };
@@ -57,5 +59,13 @@ describe("buildPayload", () => {
       baseValues({ skills: [{ name: "  회계  ", value: "40" }] })
     );
     expect(payload.skills).toEqual({ 회계: 40 });
+  });
+
+  it("passes cash and assets through as free text", () => {
+    const payload = buildPayload(
+      baseValues({ cash: "  현금 약 8만원  ", assets: "노트북, 카메라" })
+    );
+    expect(payload.cash).toBe("현금 약 8만원");
+    expect(payload.assets).toBe("노트북, 카메라");
   });
 });

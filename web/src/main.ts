@@ -75,6 +75,11 @@ function renderForm(token: string): void {
           </div>
         </section>
         <section>
+          <h2>현금과 자산</h2>
+          <label>현금 <input type="text" name="cash" placeholder="예: 현금 약 8만원" /></label>
+          <label>자산 <input type="text" name="assets" placeholder="예: 노트북, 카메라, 소형 승용차" /></label>
+        </section>
+        <section>
           <h2>기능</h2>
           <div id="skill-rows"></div>
           <button type="button" id="add-skill-row">+ 기능 추가</button>
@@ -207,6 +212,8 @@ function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): Fo
     siz: field("siz"),
     int: field("int"),
     mov: field("mov"),
+    cash: field("cash"),
+    assets: field("assets"),
     skills,
   };
 }
