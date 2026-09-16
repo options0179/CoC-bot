@@ -1,5 +1,11 @@
 import "./style.css";
-import { buildPayload, computeHalfFifth, type FormValues } from "./payload";
+import {
+  buildPayload,
+  computeHalfFifth,
+  WEAPON_FIELDS,
+  type FormValues,
+  type Weapon,
+} from "./payload";
 
 const ATTRIBUTE_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: "str", label: "근력" },
@@ -75,6 +81,20 @@ function renderForm(token: string): void {
           </div>
         </section>
         <section>
+          <h2>상태</h2>
+          <label class="checkbox-field">
+            <input type="checkbox" name="major_wound" /> 중상 (HP가 한 번에 최대치의 절반 이상 깎임)
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" name="mp_depleted" /> 빈사 (MP 소진)
+          </label>
+        </section>
+        <section>
+          <h2>무기와 전투</h2>
+          <div id="weapon-rows"></div>
+          <button type="button" id="add-weapon-row">+ 무기 추가</button>
+        </section>
+        <section>
           <h2>현금과 자산</h2>
           <label>현금 <input type="text" name="cash" placeholder="예: 현금 약 8만원" /></label>
           <label>자산 <input type="text" name="assets" placeholder="예: 노트북, 카메라, 소형 승용차" /></label>
@@ -92,6 +112,7 @@ function renderForm(token: string): void {
   `;
 
   const skillRows = document.querySelector<HTMLDivElement>("#skill-rows")!;
+  const weaponRows = document.querySelector<HTMLDivElement>("#weapon-rows")!;
   const formError = document.querySelector<HTMLParagraphElement>("#form-error")!;
   const form = document.querySelector<HTMLFormElement>("#registration-form")!;
 
@@ -131,7 +152,30 @@ function renderForm(token: string): void {
     skillRows.appendChild(row);
   }
 
+  function addWeaponRow(): void {
+    const row = document.createElement("div");
+    row.className = "weapon-row";
+
+    for (const { key, label } of WEAPON_FIELDS) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.dataset.role = key;
+      input.placeholder = label;
+      input.ariaLabel = `무기 ${label}`;
+      row.appendChild(input);
+    }
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.textContent = "삭제";
+    removeButton.addEventListener("click", () => row.remove());
+    row.appendChild(removeButton);
+
+    weaponRows.appendChild(row);
+  }
+
   document.querySelector("#add-skill-row")!.addEventListener("click", () => addSkillRow());
+  document.querySelector("#add-weapon-row")!.addEventListener("click", () => addWeaponRow());
 
   document.querySelector("#fill-common-skills")!.addEventListener("click", async () => {
     const existingNames = new Set(
@@ -155,7 +199,7 @@ function renderForm(token: string): void {
     event.preventDefault();
     formError.hidden = true;
 
-    const values = collectFormValues(form, skillRows);
+    const values = collectFormValues(form, skillRows, weaponRows);
     const payload = buildPayload(values);
 
     let response: Response;
@@ -194,15 +238,33 @@ function renderForm(token: string): void {
   });
 }
 
-function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): FormValues {
+function collectFormValues(
+  form: HTMLFormElement,
+  skillRows: HTMLDivElement,
+  weaponRows: HTMLDivElement
+): FormValues {
   const field = (name: string) =>
     (form.elements.namedItem(name) as HTMLInputElement | null)?.value ?? "";
+  const checked = (name: string) =>
+    (form.elements.namedItem(name) as HTMLInputElement | null)?.checked ?? false;
 
   const skills = Array.from(skillRows.querySelectorAll<HTMLDivElement>(".skill-row")).map(
     (row) => ({
       name: row.querySelector<HTMLInputElement>('[data-role="skill-name"]')?.value ?? "",
       value: row.querySelector<HTMLInputElement>('[data-role="skill-value"]')?.value ?? "",
     })
+  );
+
+  const weapons = Array.from(
+    weaponRows.querySelectorAll<HTMLDivElement>(".weapon-row")
+  ).map(
+    (row) =>
+      Object.fromEntries(
+        WEAPON_FIELDS.map(({ key }) => [
+          key,
+          row.querySelector<HTMLInputElement>(`[data-role="${key}"]`)?.value ?? "",
+        ])
+      ) as unknown as Weapon
   );
 
   return {
@@ -221,6 +283,9 @@ function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): Fo
     siz: field("siz"),
     int: field("int"),
     mov: field("mov"),
+    majorWound: checked("major_wound"),
+    mpDepleted: checked("mp_depleted"),
+    weapons,
     cash: field("cash"),
     assets: field("assets"),
     skills,

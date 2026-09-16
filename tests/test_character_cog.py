@@ -6,12 +6,12 @@ from bot.cogs.character import CharacterCog, _build_registration_url, _extract_s
 _SHEET_URL = "https://docs.google.com/spreadsheets/d/abc123/edit?usp=sharing"
 
 
-def _make_interaction(guild_id=1, user_id=100):
+def _make_interaction(guild_id=1, user_id=100, display_name="샬럿"):
     interaction = MagicMock()
     interaction.response = AsyncMock()
     interaction.followup = AsyncMock()
     interaction.guild_id = guild_id
-    interaction.user = MagicMock(id=user_id)
+    interaction.user = MagicMock(id=user_id, display_name=display_name)
     return interaction
 
 
@@ -73,7 +73,9 @@ def test_register_issues_token_link_when_no_link_given(monkeypatch):
 
     asyncio.run(cog.register.callback(cog, interaction, None))
 
-    token_mock.assert_awaited_once_with(cog.pool, interaction.guild_id, interaction.user.id, role="PC")
+    token_mock.assert_awaited_once_with(
+        cog.pool, interaction.guild_id, interaction.user.id, role="PC", player_name="샬럿"
+    )
     interaction.response.send_message.assert_awaited_once()
     args, kwargs = interaction.response.send_message.call_args
     assert "https://coc-bot.onrender.com/register/tok123" in args[0]
@@ -108,6 +110,7 @@ def test_register_parses_and_stores_on_success(monkeypatch):
 
     interaction.response.defer.assert_awaited_once()
     upsert_mock.assert_awaited_once()
+    assert upsert_mock.call_args[0][3]["player"] == "샬럿"
     interaction.followup.send.assert_awaited_once_with("탐사자 캐릭터를 등록했습니다.")
 
 
@@ -282,7 +285,12 @@ def test_register_scenario_character_issues_token_link_when_no_link_given(monkey
     )
 
     token_mock.assert_awaited_once_with(
-        cog.pool, interaction.guild_id, interaction.user.id, role="NPC", scenario_id=7
+        cog.pool,
+        interaction.guild_id,
+        interaction.user.id,
+        role="NPC",
+        scenario_id=7,
+        player_name="샬럿",
     )
     interaction.response.send_message.assert_awaited_once()
     args, kwargs = interaction.response.send_message.call_args
@@ -314,6 +322,6 @@ def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):
 
     upsert_mock.assert_awaited_once_with(
         cog.pool, interaction.guild_id, interaction.user.id,
-        {"name": "관리인", "skills": {}}, role="NPC", scenario_id=7,
+        {"name": "관리인", "skills": {}, "player": "샬럿"}, role="NPC", scenario_id=7,
     )
     interaction.followup.send.assert_awaited_once_with("관리인 (NPC)을(를) 등록했습니다.")
