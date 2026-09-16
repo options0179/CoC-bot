@@ -17,6 +17,8 @@ export interface FormValues {
   majorWound: boolean;
   mpDepleted: boolean;
   weapons: Weapon[];
+  cash: string;
+  assets: string;
   skills: { name: string; value: string }[];
 }
 
@@ -59,7 +61,14 @@ export interface RegistrationPayload {
   major_wound: boolean;
   mp_depleted: boolean;
   weapons: Weapon[];
+  cash: string;
+  assets: string;
   skills: Record<string, number>;
+}
+
+export function computeHalfFifth(total: number): { half: number; fifth: number } | null {
+  if (!Number.isFinite(total)) return null;
+  return { half: Math.floor(total / 2), fifth: Math.floor(total / 5) };
 }
 
 function parseIntOrNull(value: string): number | null {
@@ -107,6 +116,8 @@ export function buildPayload(values: FormValues): RegistrationPayload {
           ) as unknown as Weapon
       )
       .filter((weapon) => weapon.name !== ""),
+    cash: values.cash.trim(),
+    assets: values.assets.trim(),
     skills,
   };
 }

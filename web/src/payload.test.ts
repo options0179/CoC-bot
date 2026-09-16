@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPayload, type FormValues } from "./payload";
+import { buildPayload, computeHalfFifth, type FormValues } from "./payload";
 
 function baseValues(overrides: Partial<FormValues> = {}): FormValues {
   return {
@@ -21,6 +21,8 @@ function baseValues(overrides: Partial<FormValues> = {}): FormValues {
     majorWound: false,
     mpDepleted: false,
     weapons: [],
+    cash: "",
+    assets: "",
     skills: [],
     ...overrides,
   };
@@ -114,5 +116,23 @@ describe("buildPayload", () => {
       baseValues({ skills: [{ name: "  회계  ", value: "40" }] })
     );
     expect(payload.skills).toEqual({ 회계: 40 });
+  });
+
+  it("passes cash and assets through as free text", () => {
+    const payload = buildPayload(
+      baseValues({ cash: "  현금 약 8만원  ", assets: "노트북, 카메라" })
+    );
+    expect(payload.cash).toBe("현금 약 8만원");
+    expect(payload.assets).toBe("노트북, 카메라");
+  });
+});
+
+describe("computeHalfFifth", () => {
+  it("floors total/2 and total/5", () => {
+    expect(computeHalfFifth(65)).toEqual({ half: 32, fifth: 13 });
+  });
+
+  it("returns null for non-finite input", () => {
+    expect(computeHalfFifth(NaN)).toBeNull();
   });
 });

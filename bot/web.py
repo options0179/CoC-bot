@@ -8,7 +8,7 @@ from storage import consume_registration_token, get_valid_registration_token, up
 
 POOL_KEY: web.AppKey = web.AppKey("pool")
 
-_TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace"]
+_TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace", "cash", "assets"]
 _INT_FIELDS = ["age", "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov"]
 # 수동 입력 상태(중상/MP 빈사). 광기 플래그는 /산정이 파생하므로 폼에서 받지 않는다.
 _BOOL_FIELDS = ["major_wound", "mp_depleted"]

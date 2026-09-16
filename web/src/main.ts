@@ -1,5 +1,11 @@
 import "./style.css";
-import { buildPayload, WEAPON_FIELDS, type FormValues, type Weapon } from "./payload";
+import {
+  buildPayload,
+  computeHalfFifth,
+  WEAPON_FIELDS,
+  type FormValues,
+  type Weapon,
+} from "./payload";
 
 const ATTRIBUTE_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: "str", label: "근력" },
@@ -89,6 +95,11 @@ function renderForm(token: string): void {
           <button type="button" id="add-weapon-row">+ 무기 추가</button>
         </section>
         <section>
+          <h2>현금과 자산</h2>
+          <label>현금 <input type="text" name="cash" placeholder="예: 현금 약 8만원" /></label>
+          <label>자산 <input type="text" name="assets" placeholder="예: 노트북, 카메라, 소형 승용차" /></label>
+        </section>
+        <section>
           <h2>기능</h2>
           <div id="skill-rows"></div>
           <button type="button" id="add-skill-row">+ 기능 추가</button>
@@ -123,12 +134,21 @@ function renderForm(token: string): void {
     valueInput.ariaLabel = "값";
     valueInput.value = value;
 
+    const halfFifthPreview = document.createElement("span");
+    halfFifthPreview.className = "skill-half-fifth";
+    const updatePreview = () => {
+      const result = computeHalfFifth(Number(valueInput.value));
+      halfFifthPreview.textContent = result ? `절반 ${result.half} / 1/5 ${result.fifth}` : "";
+    };
+    valueInput.addEventListener("input", updatePreview);
+    updatePreview();
+
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.textContent = "삭제";
     removeButton.addEventListener("click", () => row.remove());
 
-    row.append(nameInput, valueInput, removeButton);
+    row.append(nameInput, valueInput, halfFifthPreview, removeButton);
     skillRows.appendChild(row);
   }
 
@@ -266,6 +286,8 @@ function collectFormValues(
     majorWound: checked("major_wound"),
     mpDepleted: checked("mp_depleted"),
     weapons,
+    cash: field("cash"),
+    assets: field("assets"),
     skills,
   };
 }

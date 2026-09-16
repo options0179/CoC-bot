@@ -1,9 +1,9 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import bot.cogs.action as action_module
 from bot.cogs.action import ActionCog
-from dice import CheckResult, SuccessLevel
-from intent_analyzer import IntentResult
 
 
 def _make_interaction(user_id=1, guild_id=10):
@@ -15,19 +15,27 @@ def _make_interaction(user_id=1, guild_id=10):
     return interaction
 
 
-def test_action_sends_narration_when_no_roll_required(monkeypatch):
+def _stub_intent(monkeypatch, **fields):
+    """analyze_intent가 어떤 필드를 돌려주든 /행동은 서술만 해야 한다.
+
+    과거 Gemini 응답에 있던 requires_roll/target_skill을 그대로 실어 보내도
+    판정이 트리거되지 않는지 확인하기 위해 SimpleNamespace로 흉내 낸다.
+    """
+    base = {
+        "action_summary": "책상 서랍을 더듬는다",
+        "intent_type": "skill_check",
+        "purpose": "숨겨진 물건을 찾으려 함",
+        "target_object": "책상 서랍",
+        "confidence": 0.9,
+    }
+    base.update(fields)
     monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="주변을 둘러본다",
-            intent_type="none",
-            target_skill="unknown",
-            purpose="상황 파악",
-            target_object="",
-            requires_roll=False,
-            confidence=0.5,
-        ),
+        action_module, "analyze_intent", lambda text, scene_context: SimpleNamespace(**base)
     )
+
+
+def test_action_sends_narration_for_plain_description(monkeypatch):
+    _stub_intent(monkeypatch, action_summary="주변을 둘러본다", intent_type="none")
     cog = ActionCog(bot=MagicMock(pool="fake-pool"))
     interaction = _make_interaction()
 
@@ -38,90 +46,24 @@ def test_action_sends_narration_when_no_roll_required(monkeypatch):
     assert kwargs["embed"].title == "서술"
 
 
-def test_action_rolls_check_when_skill_value_found(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="책상 서랍을 더듬는다",
-            intent_type="skill_check",
-            target_skill="관찰력",
-            purpose="숨겨진 물건을 찾으려 함",
-            target_object="책상 서랍",
-            requires_roll=True,
-            confidence=0.9,
-        ),
-    )
-    mock_get_skill_value = AsyncMock(return_value=60)
-    monkeypatch.setattr(
-        "bot.cogs.action.get_skill_value",
-        mock_get_skill_value,
-    )
-    monkeypatch.setattr(
-        "bot.cogs.action.roll_check",
-        lambda skill: CheckResult(roll=10, skill=skill, level=SuccessLevel.REGULAR),
-    )
+def test_action_never_triggers_a_check_even_for_roll_worthy_action(monkeypatch):
+    # 예전 구현이라면 requires_roll=True + target_skill으로 자동 판정을 굴렸을 입력.
+    _stub_intent(monkeypatch, requires_roll=True, target_skill="관찰력")
     cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction(user_id=1, guild_id=10)
+    interaction = _make_interaction()
 
     asyncio.run(cog.action.callback(cog, interaction, 설명="책상 서랍을 더듬는다"))
 
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs["embed"].title == "관찰력 판정"
-    mock_get_skill_value.assert_awaited_once_with("fake-pool", 10, 1, "관찰력")
-
-
-def test_action_sends_ephemeral_message_when_skill_value_missing(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="자물쇠를 딴다",
-            intent_type="skill_check",
-            target_skill="열쇠공",
-            purpose="문을 열려 함",
-            target_object="문",
-            requires_roll=True,
-            confidence=0.8,
-        ),
-    )
-    monkeypatch.setattr(
-        "bot.cogs.action.get_skill_value",
-        AsyncMock(return_value=None),
-    )
-    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction()
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="자물쇠를 딴다"))
-
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs.get("ephemeral") is True
-
-
-def test_action_sends_narration_when_requires_roll_but_skill_unknown(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="애매한 행동을 한다",
-            intent_type="skill_check",
-            target_skill="unknown",
-            purpose="판단하기 어려움",
-            target_object="",
-            requires_roll=True,
-            confidence=0.4,
-        ),
-    )
-    mock_get_skill_value = AsyncMock()
-    mock_roll_check = MagicMock()
-    monkeypatch.setattr("bot.cogs.action.get_skill_value", mock_get_skill_value)
-    monkeypatch.setattr("bot.cogs.action.roll_check", mock_roll_check)
-    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction()
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="애매한 행동을 한다"))
-
+    interaction.followup.send.assert_awaited_once()
     _, kwargs = interaction.followup.send.call_args
     assert kwargs["embed"].title == "서술"
-    mock_get_skill_value.assert_not_called()
-    mock_roll_check.assert_not_called()
+
+
+def test_action_module_no_longer_depends_on_check_rolling():
+    # 판정 트리거 경로 자체가 사라졌으므로 판정 관련 심볼도 남아 있으면 안 된다.
+    assert not hasattr(action_module, "roll_check")
+    assert not hasattr(action_module, "get_skill_value")
+    assert not hasattr(action_module, "check_embed")
 
 
 def test_action_sends_ephemeral_message_when_analyze_intent_raises_value_error(monkeypatch):
