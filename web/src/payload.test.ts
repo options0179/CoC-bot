@@ -21,6 +21,7 @@ function baseValues(overrides: Partial<FormValues> = {}): FormValues {
     majorWound: false,
     mpDepleted: false,
     weapons: [],
+    bio: {},
     skills: [],
     ...overrides,
   };
@@ -107,6 +108,13 @@ describe("buildPayload", () => {
       })
     );
     expect(payload.weapons).toEqual([]);
+  });
+
+  it("keeps only non-empty bio fields, trimmed", () => {
+    const payload = buildPayload(
+      baseValues({ bio: { gear: "  손전등  ", traits: "", phobias: "   " } })
+    );
+    expect(payload.bio).toEqual({ gear: "손전등" });
   });
 
   it("trims skill names before using them as keys", () => {

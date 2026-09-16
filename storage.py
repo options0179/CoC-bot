@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
 
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS player TEXT;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS weapons JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS bio JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS major_wound BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS mp_depleted BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS temp_insanity BOOLEAN NOT NULL DEFAULT false;
@@ -101,11 +102,11 @@ _CHARACTER_COLUMNS = [
     "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov",
     "hp_current", "hp_max", "san_current", "san_starting",
     "mp_current", "mp_max", "damage_bonus", "build", "cash", "assets", "skills",
-    "weapons", "major_wound", "mp_depleted",
+    "weapons", "bio", "major_wound", "mp_depleted",
 ]
 
 # JSONB 컬럼: 값이 없으면 빈 컨테이너로 채워 직렬화한다.
-_JSON_COLUMNS = {"skills": dict, "weapons": list}
+_JSON_COLUMNS = {"skills": dict, "weapons": list, "bio": dict}
 
 # NOT NULL 컬럼이라 값이 없으면 NULL 대신 false로 채워 넣는다.
 _BOOL_COLUMNS = ("major_wound", "mp_depleted")
