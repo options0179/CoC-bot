@@ -1,11 +1,5 @@
 import "./style.css";
-import {
-  BIO_FIELDS,
-  buildPayload,
-  WEAPON_FIELDS,
-  type FormValues,
-  type Weapon,
-} from "./payload";
+import { buildPayload, WEAPON_FIELDS, type FormValues, type Weapon } from "./payload";
 
 const ATTRIBUTE_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: "str", label: "근력" },
@@ -100,13 +94,6 @@ function renderForm(token: string): void {
           <button type="button" id="add-skill-row">+ 기능 추가</button>
           <button type="button" id="fill-common-skills">자주 쓰는 기능 채우기</button>
         </section>
-        <details>
-          <summary>장비·소지품·백스토리 (선택)</summary>
-          ${BIO_FIELDS.map(
-            (field) =>
-              `<label>${field.label} <textarea name="bio.${field.key}" rows="2"></textarea></label>`
-          ).join("")}
-        </details>
         <p id="form-error" class="status status--error" hidden></p>
         <button type="submit">등록하기</button>
       </form>
@@ -279,12 +266,6 @@ function collectFormValues(
     majorWound: checked("major_wound"),
     mpDepleted: checked("mp_depleted"),
     weapons,
-    bio: Object.fromEntries(
-      BIO_FIELDS.map(({ key }) => [
-        key,
-        (form.elements.namedItem(`bio.${key}`) as HTMLTextAreaElement | null)?.value ?? "",
-      ])
-    ),
     skills,
   };
 }

@@ -187,27 +187,6 @@ def test_upsert_defaults_weapons_to_empty_list(run_db):
     run_db(_body)
 
 
-def test_upsert_roundtrips_bio(run_db):
-    async def _body(pool):
-        bio = {"gear": "트렌치코트, 손전등", "traits": "겁이 없다"}
-        await upsert_character(
-            pool, guild_id=1, user_id=100, data=dict(SAMPLE_CHARACTER, bio=bio)
-        )
-        result = await get_character(pool, guild_id=1, user_id=100)
-        assert result["bio"] == bio
-
-    run_db(_body)
-
-
-def test_upsert_defaults_bio_to_empty_dict(run_db):
-    async def _body(pool):
-        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
-        result = await get_character(pool, guild_id=1, user_id=100)
-        assert result["bio"] == {}
-
-    run_db(_body)
-
-
 def test_upsert_overwrites_existing(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)

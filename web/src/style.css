@@ -75,27 +75,6 @@ label input {
   font-family: inherit;
 }
 
-label textarea {
-  display: block;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  background: #fdf9ef;
-  font-family: inherit;
-  resize: vertical;
-}
-
-details {
-  margin-bottom: 1rem;
-}
-
-details summary {
-  cursor: pointer;
-  margin-bottom: 0.5rem;
-}
-
 .field-grid-2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

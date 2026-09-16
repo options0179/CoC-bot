@@ -110,13 +110,6 @@ async def _submit_registration(request: web.Request) -> web.Response:
         )
     data["weapons"] = weapons
 
-    bio = payload.get("bio") or {}
-    if not isinstance(bio, dict) or not all(isinstance(v, str) for v in bio.values()):
-        return web.json_response(
-            {"ok": False, "error": "장비·배경 항목은 문자열이어야 합니다."}, status=400
-        )
-    data["bio"] = bio
-
     skills = payload.get("skills") or {}
     if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):
         return web.json_response({"ok": False, "error": "기능 값은 숫자여야 합니다."}, status=400)
