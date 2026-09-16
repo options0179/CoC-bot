@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
     UNIQUE (channel_id)
 );
 
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS player TEXT;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'PC';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS scenario_id INTEGER REFERENCES scenarios(id);
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS is_retired BOOLEAN NOT NULL DEFAULT false;
@@ -78,6 +79,8 @@ CREATE TABLE IF NOT EXISTS registration_tokens (
     expires_at TIMESTAMPTZ NOT NULL,
     used_at TIMESTAMPTZ
 );
+
+ALTER TABLE registration_tokens ADD COLUMN IF NOT EXISTS player_name TEXT;
 """
 
 
@@ -89,7 +92,7 @@ async def create_pool(dsn: str) -> asyncpg.Pool:
 
 
 _CHARACTER_COLUMNS = [
-    "name", "occupation", "age", "sex", "residence", "birthplace",
+    "name", "player", "occupation", "age", "sex", "residence", "birthplace",
     "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov",
     "hp_current", "hp_max", "san_current", "san_starting",
     "mp_current", "mp_max", "damage_bonus", "build", "cash", "assets", "skills",
@@ -294,6 +297,7 @@ async def create_registration_token(
     user_id: int,
     role: str = "PC",
     scenario_id: int | None = None,
+    player_name: str | None = None,
 ) -> str:
     token = secrets.token_urlsafe(24)
     expires_at = datetime.now(timezone.utc) + _TOKEN_TTL
@@ -301,8 +305,8 @@ async def create_registration_token(
         await conn.execute(
             """
             INSERT INTO registration_tokens
-                (token, guild_id, discord_user_id, role, scenario_id, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (token, guild_id, discord_user_id, role, scenario_id, expires_at, player_name)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             token,
             guild_id,
@@ -310,6 +314,7 @@ async def create_registration_token(
             role,
             scenario_id,
             expires_at,
+            player_name,
         )
     return token
 

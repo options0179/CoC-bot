@@ -70,6 +70,8 @@ def character_embed(character: dict, owner_name: str) -> discord.Embed:
     if character.get("is_retired"):
         title = f"💀 {title} (퇴장 — 영구 광기)"
     embed = discord.Embed(title=title)
+    if character.get("player"):
+        embed.add_field(name="플레이어", value=character["player"], inline=False)
     embed.add_field(name="직업", value=character.get("occupation") or "-", inline=False)
     embed.add_field(
         name="특성치",

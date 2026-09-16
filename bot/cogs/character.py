@@ -56,7 +56,11 @@ class CharacterCog(commands.Cog):
     ) -> None:
         if 링크 is None:
             token = await create_registration_token(
-                self.pool, interaction.guild_id, interaction.user.id, role="PC"
+                self.pool,
+                interaction.guild_id,
+                interaction.user.id,
+                role="PC",
+                player_name=interaction.user.display_name,
             )
             url = _build_registration_url(token)
             await interaction.response.send_message(
@@ -83,6 +87,7 @@ class CharacterCog(commands.Cog):
                 f"시트를 읽을 수 없습니다: {exc}", ephemeral=True
             )
             return
+        data["player"] = interaction.user.display_name
         await upsert_character(self.pool, interaction.guild_id, interaction.user.id, data)
         await interaction.followup.send(f"{data['name']} 캐릭터를 등록했습니다.")
 
@@ -144,6 +149,7 @@ class CharacterCog(commands.Cog):
                 interaction.user.id,
                 role=직책.value,
                 scenario_id=scenario["id"],
+                player_name=interaction.user.display_name,
             )
             url = _build_registration_url(token)
             await interaction.response.send_message(
@@ -168,6 +174,7 @@ class CharacterCog(commands.Cog):
         except ValueError as exc:
             await interaction.followup.send(f"시트를 읽을 수 없습니다: {exc}", ephemeral=True)
             return
+        data["player"] = interaction.user.display_name
         await upsert_character(
             self.pool,
             interaction.guild_id,

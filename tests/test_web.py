@@ -9,7 +9,14 @@ from bot.web import create_app
 
 
 def _mock_valid_token(monkeypatch, **overrides):
-    row = {"guild_id": 1, "discord_user_id": 100, "role": "PC", "scenario_id": None, **overrides}
+    row = {
+        "guild_id": 1,
+        "discord_user_id": 100,
+        "role": "PC",
+        "scenario_id": None,
+        "player_name": None,
+        **overrides,
+    }
     monkeypatch.setattr("bot.web.get_valid_registration_token", AsyncMock(return_value=row))
     return row
 
@@ -307,6 +314,27 @@ def test_post_registration_ignores_body_supplied_identity_fields(monkeypatch):
         assert args[2] == 100  # token's user_id, not the body's 999
         assert kwargs["role"] == "PC"  # token's role, not the body's "GM"
         assert kwargs["scenario_id"] is None  # token's scenario_id, not the body's 42
+
+    asyncio.run(_body())
+
+
+def test_post_registration_writes_player_from_token_not_body(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch, player_name="샬럿")
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "player": "위조된플레이어"},
+            )
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["player"] == "샬럿"
 
     asyncio.run(_body())
 

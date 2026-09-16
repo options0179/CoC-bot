@@ -125,6 +125,17 @@ def test_character_embed_shows_hp_mp_san():
     assert vitals_field.value == "HP 11/11  MP 11/11  SAN 55/55"
 
 
+def test_character_embed_shows_player_when_recorded():
+    embed = character_embed(_sample_character(player="샬럿"), owner_name="탐사자")
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["플레이어"] == "샬럿"
+
+
+def test_character_embed_omits_player_field_when_unknown():
+    embed = character_embed(_sample_character(), owner_name="탐사자")
+    assert all(f.name != "플레이어" for f in embed.fields)
+
+
 def test_character_embed_shows_retired_badge():
     embed = character_embed(_sample_character(is_retired=True), owner_name="탐사자")
     assert "퇴장" in embed.title

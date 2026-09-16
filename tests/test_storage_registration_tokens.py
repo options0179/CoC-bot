@@ -55,6 +55,26 @@ def test_create_token_with_role_and_scenario(run_db):
     run_db(_body)
 
 
+def test_create_token_stores_player_name(run_db):
+    async def _body(pool):
+        token = await create_registration_token(
+            pool, guild_id=1, user_id=100, player_name="샬럿"
+        )
+        row = await get_valid_registration_token(pool, token)
+        assert row["player_name"] == "샬럿"
+
+    run_db(_body)
+
+
+def test_create_token_without_player_name_stores_null(run_db):
+    async def _body(pool):
+        token = await create_registration_token(pool, guild_id=1, user_id=100)
+        row = await get_valid_registration_token(pool, token)
+        assert row["player_name"] is None
+
+    run_db(_body)
+
+
 def test_get_valid_token_returns_none_for_unknown_token(run_db):
     async def _body(pool):
         row = await get_valid_registration_token(pool, "does-not-exist")

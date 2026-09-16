@@ -61,6 +61,8 @@ async def _submit_registration(request: web.Request) -> web.Response:
     payload["name"] = str(name).strip()
 
     data = {field: payload.get(field) for field in _TEXT_FIELDS}
+    # 플레이어는 폼 입력이 아니라 토큰 발급 시 서버가 캡처한 값만 신뢰한다.
+    data["player"] = token_row["player_name"]
     for field in _INT_FIELDS:
         value = payload.get(field)
         if value is None or value == "":

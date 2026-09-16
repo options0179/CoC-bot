@@ -84,6 +84,17 @@ def test_upsert_then_get_roundtrips(run_db):
     run_db(_body)
 
 
+def test_upsert_stores_player(run_db):
+    async def _body(pool):
+        await upsert_character(
+            pool, guild_id=1, user_id=100, data=dict(SAMPLE_CHARACTER, player="샬럿")
+        )
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["player"] == "샬럿"
+
+    run_db(_body)
+
+
 def test_upsert_overwrites_existing(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
