@@ -16,8 +16,29 @@ export interface FormValues {
   mov: string;
   majorWound: boolean;
   mpDepleted: boolean;
+  weapons: Weapon[];
   skills: { name: string; value: string }[];
 }
+
+export interface Weapon {
+  name: string;
+  skill: string;
+  damage: string;
+  range: string;
+  attacks: string;
+  ammo: string;
+  malfunction: string;
+}
+
+export const WEAPON_FIELDS: { key: keyof Weapon; label: string }[] = [
+  { key: "name", label: "이름" },
+  { key: "skill", label: "기능" },
+  { key: "damage", label: "피해" },
+  { key: "range", label: "사거리" },
+  { key: "attacks", label: "공격횟수" },
+  { key: "ammo", label: "탄약" },
+  { key: "malfunction", label: "고장" },
+];
 
 export interface RegistrationPayload {
   name: string;
@@ -37,6 +58,7 @@ export interface RegistrationPayload {
   mov: number | null;
   major_wound: boolean;
   mp_depleted: boolean;
+  weapons: Weapon[];
   skills: Record<string, number>;
 }
 
@@ -77,6 +99,14 @@ export function buildPayload(values: FormValues): RegistrationPayload {
     mov: parseIntOrNull(values.mov),
     major_wound: values.majorWound,
     mp_depleted: values.mpDepleted,
+    weapons: values.weapons
+      .map(
+        (weapon) =>
+          Object.fromEntries(
+            WEAPON_FIELDS.map(({ key }) => [key, weapon[key].trim()])
+          ) as unknown as Weapon
+      )
+      .filter((weapon) => weapon.name !== ""),
     skills,
   };
 }

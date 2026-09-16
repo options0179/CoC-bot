@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
 );
 
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS player TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS weapons JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS major_wound BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS mp_depleted BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS temp_insanity BOOLEAN NOT NULL DEFAULT false;
@@ -100,8 +101,11 @@ _CHARACTER_COLUMNS = [
     "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov",
     "hp_current", "hp_max", "san_current", "san_starting",
     "mp_current", "mp_max", "damage_bonus", "build", "cash", "assets", "skills",
-    "major_wound", "mp_depleted",
+    "weapons", "major_wound", "mp_depleted",
 ]
+
+# JSONB 컬럼: 값이 없으면 빈 컨테이너로 채워 직렬화한다.
+_JSON_COLUMNS = {"skills": dict, "weapons": list}
 
 # NOT NULL 컬럼이라 값이 없으면 NULL 대신 false로 채워 넣는다.
 _BOOL_COLUMNS = ("major_wound", "mp_depleted")
@@ -120,8 +124,9 @@ async def upsert_character(
     scenario_id: int | None = None,
 ) -> None:
     values = [data.get(col) for col in _CHARACTER_COLUMNS]
-    skills_index = _CHARACTER_COLUMNS.index("skills")
-    values[skills_index] = json.dumps(values[skills_index] or {})
+    for column, empty in _JSON_COLUMNS.items():
+        index = _CHARACTER_COLUMNS.index(column)
+        values[index] = json.dumps(values[index] if values[index] else empty())
     for column in _BOOL_COLUMNS:
         index = _CHARACTER_COLUMNS.index(column)
         values[index] = bool(values[index])
@@ -148,8 +153,9 @@ def _row_to_character(row) -> dict | None:
     if row is None:
         return None
     result = dict(row)
-    if isinstance(result["skills"], str):
-        result["skills"] = json.loads(result["skills"])
+    for column in _JSON_COLUMNS:
+        if isinstance(result.get(column), str):
+            result[column] = json.loads(result[column])
     return result
 
 
@@ -287,13 +293,7 @@ async def get_roster(pool: asyncpg.Pool, scenario_id: int) -> list[dict]:
             """,
             scenario_id,
         )
-    results = []
-    for row in rows:
-        character = dict(row)
-        if isinstance(character["skills"], str):
-            character["skills"] = json.loads(character["skills"])
-        results.append(character)
-    return results
+    return [_row_to_character(row) for row in rows]
 
 
 async def advance_narration_position(

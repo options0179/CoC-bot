@@ -112,13 +112,13 @@ CoC-Bot/
 | 경로 | 역할 |
 |---|---|
 | `dice.py` | d100 판정/성공등급, 보너스·페널티 주사위, 다이스 표기(`XdY+Z`) 파서, SAN 체크, 대립판정 — 판정 계산 로직 전부가 여기 있다. |
-| `storage.py` | Postgres 스키마(`characters`, `scenarios`, `scenario_participants`, `registration_tokens`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신 + 광기 상태 플래그 래칭), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치, 웹 등록 토큰 발급/조회/소비(발급 시 Discord 표시 이름을 `player_name`으로 함께 저장) — DB 접근 전부가 여기 있다. |
+| `storage.py` | Postgres 스키마(`characters`, `scenarios`, `scenario_participants`, `registration_tokens`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, 기능·무기는 JSONB로 직렬화, SAN 갱신 + 광기 상태 플래그 래칭), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치, 웹 등록 토큰 발급/조회/소비(발급 시 Discord 표시 이름을 `player_name`으로 함께 저장) — DB 접근 전부가 여기 있다. |
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
 | `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 웹 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
-| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하고, `web/dist`에 빌드된 폼 페이지(`GET /register/{token}`)와 정적 자산(`GET /assets/...`), 기능명 목록(`GET /api/skills`)을 서빙하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동한다. 정신력(POW)은 필수 입력이며 제출 시 이성(SAN) 시작치·현재치를 POW 값으로 자동 계산해 저장한다(`/산정`이 SAN 없는 캐릭터에서 죽는 것을 방지). 플레이어 이름은 폼 입력을 받지 않고 토큰에 저장된 `player_name`(발급 시점의 Discord 표시 이름)만 신뢰해 `characters.player`에 쓴다. 중상/MP 빈사는 체크박스로 받아 boolean으로 검증하고, 광기 플래그는 `/산정`이 파생하는 값이라 폼 입력을 받지 않는다 |
+| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하고, `web/dist`에 빌드된 폼 페이지(`GET /register/{token}`)와 정적 자산(`GET /assets/...`), 기능명 목록(`GET /api/skills`)을 서빙하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동한다. 정신력(POW)은 필수 입력이며 제출 시 이성(SAN) 시작치·현재치를 POW 값으로 자동 계산해 저장한다(`/산정`이 SAN 없는 캐릭터에서 죽는 것을 방지). 플레이어 이름은 폼 입력을 받지 않고 토큰에 저장된 `player_name`(발급 시점의 Discord 표시 이름)만 신뢰해 `characters.player`에 쓴다. 중상/MP 빈사는 체크박스로 받아 boolean으로 검증하고, 광기 플래그는 `/산정`이 파생하는 값이라 폼 입력을 받지 않는다. 무기는 이름/기능/피해/사거리/공격횟수/탄약/고장을 문자열로 담은 리스트로 받아 검증만 하고 저장한다(피해 굴림 자동화는 하지 않음) |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`, 캐릭터(역할 배지 포함)/시나리오/Keeper 낭독 딕셔너리를 한국어 Discord 임베드로 포맷. `status_badges()`가 중상/MP 빈사/일시적 광기/부정형 광기를 "상태" 필드로 묶어 캐릭터·SAN 임베드에 함께 보여준다 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드. 일시적/부정형 광기 조건을 한 번만 계산해 경고 문구와 DB 플래그(`temp_insanity`/`indefinite_insanity`) 양쪽에 함께 쓴다 |

@@ -109,6 +109,15 @@ def character_embed(character: dict, owner_name: str) -> discord.Embed:
         ),
         inline=False,
     )
+    weapons = character.get("weapons") or []
+    if weapons:
+        embed.add_field(
+            name="무기",
+            value="\n".join(
+                f"{w.get('name')}: {w.get('damage') or '-'}" for w in weapons
+            ),
+            inline=False,
+        )
     badges = status_badges(character)
     if badges:
         embed.add_field(name="상태", value=" · ".join(badges), inline=False)

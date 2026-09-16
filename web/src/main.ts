@@ -1,5 +1,5 @@
 import "./style.css";
-import { buildPayload, type FormValues } from "./payload";
+import { buildPayload, WEAPON_FIELDS, type FormValues, type Weapon } from "./payload";
 
 const ATTRIBUTE_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: "str", label: "근력" },
@@ -84,6 +84,11 @@ function renderForm(token: string): void {
           </label>
         </section>
         <section>
+          <h2>무기와 전투</h2>
+          <div id="weapon-rows"></div>
+          <button type="button" id="add-weapon-row">+ 무기 추가</button>
+        </section>
+        <section>
           <h2>기능</h2>
           <div id="skill-rows"></div>
           <button type="button" id="add-skill-row">+ 기능 추가</button>
@@ -96,6 +101,7 @@ function renderForm(token: string): void {
   `;
 
   const skillRows = document.querySelector<HTMLDivElement>("#skill-rows")!;
+  const weaponRows = document.querySelector<HTMLDivElement>("#weapon-rows")!;
   const formError = document.querySelector<HTMLParagraphElement>("#form-error")!;
   const form = document.querySelector<HTMLFormElement>("#registration-form")!;
 
@@ -126,7 +132,30 @@ function renderForm(token: string): void {
     skillRows.appendChild(row);
   }
 
+  function addWeaponRow(): void {
+    const row = document.createElement("div");
+    row.className = "weapon-row";
+
+    for (const { key, label } of WEAPON_FIELDS) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.dataset.role = key;
+      input.placeholder = label;
+      input.ariaLabel = `무기 ${label}`;
+      row.appendChild(input);
+    }
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.textContent = "삭제";
+    removeButton.addEventListener("click", () => row.remove());
+    row.appendChild(removeButton);
+
+    weaponRows.appendChild(row);
+  }
+
   document.querySelector("#add-skill-row")!.addEventListener("click", () => addSkillRow());
+  document.querySelector("#add-weapon-row")!.addEventListener("click", () => addWeaponRow());
 
   document.querySelector("#fill-common-skills")!.addEventListener("click", async () => {
     const existingNames = new Set(
@@ -150,7 +179,7 @@ function renderForm(token: string): void {
     event.preventDefault();
     formError.hidden = true;
 
-    const values = collectFormValues(form, skillRows);
+    const values = collectFormValues(form, skillRows, weaponRows);
     const payload = buildPayload(values);
 
     let response: Response;
@@ -189,7 +218,11 @@ function renderForm(token: string): void {
   });
 }
 
-function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): FormValues {
+function collectFormValues(
+  form: HTMLFormElement,
+  skillRows: HTMLDivElement,
+  weaponRows: HTMLDivElement
+): FormValues {
   const field = (name: string) =>
     (form.elements.namedItem(name) as HTMLInputElement | null)?.value ?? "";
   const checked = (name: string) =>
@@ -200,6 +233,18 @@ function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): Fo
       name: row.querySelector<HTMLInputElement>('[data-role="skill-name"]')?.value ?? "",
       value: row.querySelector<HTMLInputElement>('[data-role="skill-value"]')?.value ?? "",
     })
+  );
+
+  const weapons = Array.from(
+    weaponRows.querySelectorAll<HTMLDivElement>(".weapon-row")
+  ).map(
+    (row) =>
+      Object.fromEntries(
+        WEAPON_FIELDS.map(({ key }) => [
+          key,
+          row.querySelector<HTMLInputElement>(`[data-role="${key}"]`)?.value ?? "",
+        ])
+      ) as unknown as Weapon
   );
 
   return {
@@ -220,6 +265,7 @@ function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): Fo
     mov: field("mov"),
     majorWound: checked("major_wound"),
     mpDepleted: checked("mp_depleted"),
+    weapons,
     skills,
   };
 }

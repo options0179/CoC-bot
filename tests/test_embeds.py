@@ -136,6 +136,21 @@ def test_character_embed_omits_player_field_when_unknown():
     assert all(f.name != "플레이어" for f in embed.fields)
 
 
+def test_character_embed_lists_weapons():
+    character = _sample_character(
+        weapons=[{"name": "권총 .38", "damage": "1d10"}, {"name": "곤봉", "damage": "1d6+DB"}]
+    )
+    embed = character_embed(character, owner_name="탐사자")
+    fields = {f.name: f.value for f in embed.fields}
+    assert "권총 .38: 1d10" in fields["무기"]
+    assert "곤봉: 1d6+DB" in fields["무기"]
+
+
+def test_character_embed_omits_weapon_field_when_empty():
+    embed = character_embed(_sample_character(weapons=[]), owner_name="탐사자")
+    assert all(f.name != "무기" for f in embed.fields)
+
+
 def test_character_embed_shows_status_badges():
     character = _sample_character(
         major_wound=True, mp_depleted=True, temp_insanity=True, indefinite_insanity=True

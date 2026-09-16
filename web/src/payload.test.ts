@@ -20,6 +20,7 @@ function baseValues(overrides: Partial<FormValues> = {}): FormValues {
     mov: "",
     majorWound: false,
     mpDepleted: false,
+    weapons: [],
     skills: [],
     ...overrides,
   };
@@ -58,6 +59,54 @@ describe("buildPayload", () => {
     const payload = buildPayload(baseValues({ majorWound: true, mpDepleted: false }));
     expect(payload.major_wound).toBe(true);
     expect(payload.mp_depleted).toBe(false);
+  });
+
+  it("keeps weapon rows that have a name and trims their values", () => {
+    const payload = buildPayload(
+      baseValues({
+        weapons: [
+          {
+            name: "  권총 .38  ",
+            skill: "권총",
+            damage: "1d10",
+            range: "15m",
+            attacks: "1(3)",
+            ammo: "6",
+            malfunction: "100",
+          },
+        ],
+      })
+    );
+    expect(payload.weapons).toEqual([
+      {
+        name: "권총 .38",
+        skill: "권총",
+        damage: "1d10",
+        range: "15m",
+        attacks: "1(3)",
+        ammo: "6",
+        malfunction: "100",
+      },
+    ]);
+  });
+
+  it("drops weapon rows without a name", () => {
+    const payload = buildPayload(
+      baseValues({
+        weapons: [
+          {
+            name: "  ",
+            skill: "",
+            damage: "1d10",
+            range: "",
+            attacks: "",
+            ammo: "",
+            malfunction: "",
+          },
+        ],
+      })
+    );
+    expect(payload.weapons).toEqual([]);
   });
 
   it("trims skill names before using them as keys", () => {

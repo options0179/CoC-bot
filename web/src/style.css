@@ -105,6 +105,22 @@ label input {
   margin-bottom: 0.5rem;
 }
 
+.weapon-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.weapon-row input {
+  min-width: 0;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: #fdf9ef;
+  font-family: inherit;
+}
+
 .skill-row input {
   padding: 0.4rem;
   border: 1px solid var(--border);

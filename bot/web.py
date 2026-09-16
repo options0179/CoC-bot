@@ -97,6 +97,19 @@ async def _submit_registration(request: web.Request) -> web.Response:
             )
         data[field] = value
 
+    weapons = payload.get("weapons") or []
+    if not isinstance(weapons, list) or not all(
+        isinstance(w, dict)
+        and all(isinstance(v, str) for v in w.values())
+        and w.get("name", "").strip()
+        for w in weapons
+    ):
+        return web.json_response(
+            {"ok": False, "error": "무기 항목은 이름이 있는 문자열 값들이어야 합니다."},
+            status=400,
+        )
+    data["weapons"] = weapons
+
     skills = payload.get("skills") or {}
     if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):
         return web.json_response({"ok": False, "error": "기능 값은 숫자여야 합니다."}, status=400)
