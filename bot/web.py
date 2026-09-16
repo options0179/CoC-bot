@@ -77,6 +77,14 @@ async def _submit_registration(request: web.Request) -> web.Response:
                 {"ok": False, "error": f"{field}은(는) 0에서 999 사이의 값이어야 합니다."},
                 status=400,
             )
+    if data["pow"] is None:
+        return web.json_response(
+            {"ok": False, "error": "정신력(POW)을 입력해주세요. 이성(SAN) 계산에 필요합니다."},
+            status=400,
+        )
+    data["san_starting"] = data["pow"]
+    data["san_current"] = data["pow"]
+
     skills = payload.get("skills") or {}
     if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):
         return web.json_response({"ok": False, "error": "기능 값은 숫자여야 합니다."}, status=400)

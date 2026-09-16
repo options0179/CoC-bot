@@ -144,13 +144,47 @@ def test_post_registration_rejects_attribute_above_999(monkeypatch):
     asyncio.run(_body())
 
 
+def test_post_registration_rejects_missing_pow(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/register/tok", json={"name": "탐사자"})
+            assert resp.status == 400
+            body = await resp.json()
+            assert "정신력" in body["error"]
+
+    asyncio.run(_body())
+
+
+def test_post_registration_computes_san_from_pow(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok", json={"name": "탐사자", "pow": 55}
+            )
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["san_starting"] == 55
+        assert args[3]["san_current"] == 55
+
+    asyncio.run(_body())
+
+
 def test_post_registration_rejects_non_dict_skills(monkeypatch):
     async def _body():
         _mock_valid_token(monkeypatch)
         app = create_app(pool=None)
         async with TestClient(TestServer(app)) as client:
             resp = await client.post(
-                "/api/register/tok", json={"name": "탐사자", "skills": ["x"]}
+                "/api/register/tok", json={"name": "탐사자", "pow": 50, "skills": ["x"]}
             )
             assert resp.status == 400
             body = await resp.json()
@@ -167,7 +201,7 @@ def test_post_registration_rejects_non_int_skill_value(monkeypatch):
         async with TestClient(TestServer(app)) as client:
             resp = await client.post(
                 "/api/register/tok",
-                json={"name": "탐사자", "skills": {"회계": "abc"}},
+                json={"name": "탐사자", "pow": 50, "skills": {"회계": "abc"}},
             )
             assert resp.status == 400
             body = await resp.json()
@@ -200,7 +234,7 @@ def test_post_registration_strips_name_whitespace(monkeypatch):
         app = create_app(pool=None)
         async with TestClient(TestServer(app)) as client:
             resp = await client.post(
-                "/api/register/tok", json={"name": "  탐사자  "}
+                "/api/register/tok", json={"name": "  탐사자  ", "pow": 50}
             )
             assert resp.status == 200
             body = await resp.json()
@@ -224,7 +258,7 @@ def test_post_registration_succeeds_and_consumes_token(monkeypatch):
         async with TestClient(TestServer(app)) as client:
             resp = await client.post(
                 "/api/register/tok",
-                json={"name": "탐사자", "str": 50, "skills": {"회계": 40}},
+                json={"name": "탐사자", "str": 50, "pow": 55, "skills": {"회계": 40}},
             )
             assert resp.status == 200
             body = await resp.json()
@@ -236,6 +270,8 @@ def test_post_registration_succeeds_and_consumes_token(monkeypatch):
         assert args[2] == 100  # user_id
         assert args[3]["name"] == "탐사자"
         assert args[3]["str"] == 50
+        assert args[3]["san_starting"] == 55
+        assert args[3]["san_current"] == 55
         assert args[3]["skills"] == {"회계": 40}
         assert kwargs["role"] == "PC"
         assert kwargs["scenario_id"] is None
@@ -257,6 +293,7 @@ def test_post_registration_ignores_body_supplied_identity_fields(monkeypatch):
                 "/api/register/tok",
                 json={
                     "name": "탐사자",
+                    "pow": 50,
                     "guild_id": 999,
                     "discord_user_id": 999,
                     "role": "GM",

@@ -116,7 +116,7 @@ CoC-Bot/
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
 | `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 웹 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
-| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하고, `web/dist`에 빌드된 폼 페이지(`GET /register/{token}`)와 정적 자산(`GET /assets/...`), 기능명 목록(`GET /api/skills`)을 서빙하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동한다 |
+| `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하고, `web/dist`에 빌드된 폼 페이지(`GET /register/{token}`)와 정적 자산(`GET /assets/...`), 기능명 목록(`GET /api/skills`)을 서빙하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동한다. 정신력(POW)은 필수 입력이며 제출 시 이성(SAN) 시작치·현재치를 POW 값으로 자동 계산해 저장한다(`/산정`이 SAN 없는 캐릭터에서 죽는 것을 방지) |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`, 캐릭터(역할 배지 포함)/시나리오/Keeper 낭독 딕셔너리를 한국어 Discord 임베드로 포맷 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
