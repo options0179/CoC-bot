@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS characters (
     mp_max INTEGER,
     damage_bonus TEXT,
     build TEXT,
-    cash INTEGER,
-    assets INTEGER,
+    cash TEXT,
+    assets TEXT,
     skills JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS scenarios (
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'PC';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS scenario_id INTEGER REFERENCES scenarios(id);
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS is_retired BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE characters ALTER COLUMN cash TYPE TEXT USING cash::TEXT;
+ALTER TABLE characters ALTER COLUMN assets TYPE TEXT USING assets::TEXT;
 ALTER TABLE characters DROP CONSTRAINT IF EXISTS characters_guild_id_discord_user_id_key;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_characters_pc
     ON characters (guild_id, discord_user_id) WHERE role = 'PC';

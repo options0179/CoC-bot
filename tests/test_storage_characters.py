@@ -84,6 +84,21 @@ def test_upsert_then_get_roundtrips(run_db):
     run_db(_body)
 
 
+def test_upsert_stores_cash_and_assets_as_free_text(run_db):
+    async def _body(pool):
+        data = dict(
+            SAMPLE_CHARACTER,
+            cash="현금 약 8만원",
+            assets="노트북, 카메라, 소형 승용차",
+        )
+        await upsert_character(pool, guild_id=1, user_id=100, data=data)
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["cash"] == "현금 약 8만원"
+        assert result["assets"] == "노트북, 카메라, 소형 승용차"
+
+    run_db(_body)
+
+
 def test_upsert_overwrites_existing(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)

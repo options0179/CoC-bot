@@ -109,6 +109,14 @@ label input {
   flex: 1;
 }
 
+.skill-half-fifth {
+  flex: 1;
+  align-self: center;
+  font-size: 0.8rem;
+  color: var(--muted, #6b6357);
+  white-space: nowrap;
+}
+
 button {
   font-family: inherit;
   cursor: pointer;

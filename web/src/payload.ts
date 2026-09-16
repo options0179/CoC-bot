@@ -14,6 +14,8 @@ export interface FormValues {
   siz: string;
   int: string;
   mov: string;
+  cash: string;
+  assets: string;
   skills: { name: string; value: string }[];
 }
 
@@ -33,7 +35,14 @@ export interface RegistrationPayload {
   siz: number | null;
   int: number | null;
   mov: number | null;
+  cash: string;
+  assets: string;
   skills: Record<string, number>;
+}
+
+export function computeHalfFifth(total: number): { half: number; fifth: number } | null {
+  if (!Number.isFinite(total)) return null;
+  return { half: Math.floor(total / 2), fifth: Math.floor(total / 5) };
 }
 
 function parseIntOrNull(value: string): number | null {
@@ -71,6 +80,8 @@ export function buildPayload(values: FormValues): RegistrationPayload {
     siz: parseIntOrNull(values.siz),
     int: parseIntOrNull(values.int),
     mov: parseIntOrNull(values.mov),
+    cash: values.cash.trim(),
+    assets: values.assets.trim(),
     skills,
   };
 }

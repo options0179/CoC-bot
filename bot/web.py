@@ -8,7 +8,7 @@ from storage import consume_registration_token, get_valid_registration_token, up
 
 POOL_KEY: web.AppKey = web.AppKey("pool")
 
-_TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace"]
+_TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace", "cash", "assets"]
 _INT_FIELDS = ["age", "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov"]
 
 _WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
