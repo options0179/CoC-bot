@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPayload, type FormValues } from "./payload";
+import { buildPayload, computeHalfFifth, type FormValues } from "./payload";
 
 function baseValues(overrides: Partial<FormValues> = {}): FormValues {
   return {
@@ -67,5 +67,15 @@ describe("buildPayload", () => {
     );
     expect(payload.cash).toBe("현금 약 8만원");
     expect(payload.assets).toBe("노트북, 카메라");
+  });
+});
+
+describe("computeHalfFifth", () => {
+  it("floors total/2 and total/5", () => {
+    expect(computeHalfFifth(65)).toEqual({ half: 32, fifth: 13 });
+  });
+
+  it("returns null for non-finite input", () => {
+    expect(computeHalfFifth(NaN)).toBeNull();
   });
 });

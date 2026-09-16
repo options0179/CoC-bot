@@ -1,5 +1,5 @@
 import "./style.css";
-import { buildPayload, type FormValues } from "./payload";
+import { buildPayload, computeHalfFifth, type FormValues } from "./payload";
 
 const ATTRIBUTE_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: "str", label: "근력" },
@@ -113,12 +113,21 @@ function renderForm(token: string): void {
     valueInput.ariaLabel = "값";
     valueInput.value = value;
 
+    const halfFifthPreview = document.createElement("span");
+    halfFifthPreview.className = "skill-half-fifth";
+    const updatePreview = () => {
+      const result = computeHalfFifth(Number(valueInput.value));
+      halfFifthPreview.textContent = result ? `절반 ${result.half} / 1/5 ${result.fifth}` : "";
+    };
+    valueInput.addEventListener("input", updatePreview);
+    updatePreview();
+
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.textContent = "삭제";
     removeButton.addEventListener("click", () => row.remove());
 
-    row.append(nameInput, valueInput, removeButton);
+    row.append(nameInput, valueInput, halfFifthPreview, removeButton);
     skillRows.appendChild(row);
   }
 

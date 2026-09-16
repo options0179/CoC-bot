@@ -40,6 +40,11 @@ export interface RegistrationPayload {
   skills: Record<string, number>;
 }
 
+export function computeHalfFifth(total: number): { half: number; fifth: number } | null {
+  if (!Number.isFinite(total)) return null;
+  return { half: Math.floor(total / 2), fifth: Math.floor(total / 5) };
+}
+
 function parseIntOrNull(value: string): number | null {
   const trimmed = value.trim();
   if (trimmed === "") return null;
