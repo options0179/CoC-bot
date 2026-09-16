@@ -1,23 +1,11 @@
-import asyncio
 import os
-import re
 
-import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from bot.embeds import character_embed
-from sheet_parser import parse_character_sheet
-from storage import create_registration_token, get_character, get_scenario_by_title, upsert_character
-
-_EXPORT_URL_TEMPLATE = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
-_SHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
-
-
-def _extract_sheet_id(url: str) -> str | None:
-    match = _SHEET_ID_RE.search(url)
-    return match.group(1) if match else None
+from storage import create_registration_token, get_character, get_scenario_by_title
 
 
 def _build_registration_url(token: str) -> str:
@@ -28,63 +16,22 @@ def _build_registration_url(token: str) -> str:
     return f"{base_url}/register/{token}"
 
 
-async def _fetch_sheet_bytes(sheet_id: str) -> tuple[bytes | None, str | None]:
-    export_url = _EXPORT_URL_TEMPLATE.format(sheet_id=sheet_id)
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(export_url) as resp:
-                if resp.status != 200:
-                    return None, "시트를 가져올 수 없습니다. 링크 공개 설정을 확인하세요."
-                return await resp.read(), None
-    except aiohttp.ClientError as exc:
-        return None, f"시트를 가져오는 중 오류: {exc}"
-
-
 class CharacterCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.pool = bot.pool
 
     @app_commands.command(name="캐릭터등록", description="캐릭터시트를 등록합니다.")
-    @app_commands.describe(
-        링크="(선택) 캐릭터시트 구글 스프레드시트 링크(링크가 있는 모든 사용자에게 공개) "
-        "— 비워두면 웹 등록 폼 링크를 대신 받습니다"
-    )
     @app_commands.guild_only()
-    async def register(
-        self, interaction: discord.Interaction, 링크: str | None = None
-    ) -> None:
-        if 링크 is None:
-            token = await create_registration_token(
-                self.pool, interaction.guild_id, interaction.user.id, role="PC"
-            )
-            url = _build_registration_url(token)
-            await interaction.response.send_message(
-                f"아래 링크에서 캐릭터를 등록하세요 (30분간 유효, 1회용):\n{url}",
-                ephemeral=True,
-            )
-            return
-
-        sheet_id = _extract_sheet_id(링크)
-        if sheet_id is None:
-            await interaction.response.send_message(
-                "구글 스프레드시트 링크가 아닙니다.", ephemeral=True
-            )
-            return
-        await interaction.response.defer()
-        file_bytes, error = await _fetch_sheet_bytes(sheet_id)
-        if error is not None:
-            await interaction.followup.send(error, ephemeral=True)
-            return
-        try:
-            data = await asyncio.to_thread(parse_character_sheet, file_bytes)
-        except ValueError as exc:
-            await interaction.followup.send(
-                f"시트를 읽을 수 없습니다: {exc}", ephemeral=True
-            )
-            return
-        await upsert_character(self.pool, interaction.guild_id, interaction.user.id, data)
-        await interaction.followup.send(f"{data['name']} 캐릭터를 등록했습니다.")
+    async def register(self, interaction: discord.Interaction) -> None:
+        token = await create_registration_token(
+            self.pool, interaction.guild_id, interaction.user.id, role="PC"
+        )
+        url = _build_registration_url(token)
+        await interaction.response.send_message(
+            f"아래 링크에서 캐릭터를 등록하세요 (30분간 유효, 1회용):\n{url}",
+            ephemeral=True,
+        )
 
     @app_commands.command(name="캐릭터조회", description="등록된 캐릭터를 조회합니다.")
     @app_commands.describe(유저="조회할 유저 (생략 시 본인)")
@@ -107,12 +54,7 @@ class CharacterCog(commands.Cog):
     @app_commands.command(
         name="시나리오캐릭터등록", description="시나리오의 KPC/NPC 캐릭터시트를 등록합니다."
     )
-    @app_commands.describe(
-        시나리오="시나리오 이름",
-        직책="KPC 또는 NPC",
-        링크="(선택) 캐릭터시트 구글 스프레드시트 링크(링크가 있는 모든 사용자에게 공개) "
-        "— 비워두면 웹 등록 폼 링크를 대신 받습니다",
-    )
+    @app_commands.describe(시나리오="시나리오 이름", 직책="KPC 또는 NPC")
     @app_commands.choices(
         직책=[
             app_commands.Choice(name="KPC", value="KPC"),
@@ -125,7 +67,6 @@ class CharacterCog(commands.Cog):
         interaction: discord.Interaction,
         시나리오: str,
         직책: app_commands.Choice[str],
-        링크: str | None = None,
     ) -> None:
         scenario = await get_scenario_by_title(self.pool, interaction.guild_id, 시나리오)
         if scenario is None:
@@ -137,46 +78,18 @@ class CharacterCog(commands.Cog):
             )
             return
 
-        if 링크 is None:
-            token = await create_registration_token(
-                self.pool,
-                interaction.guild_id,
-                interaction.user.id,
-                role=직책.value,
-                scenario_id=scenario["id"],
-            )
-            url = _build_registration_url(token)
-            await interaction.response.send_message(
-                f"아래 링크에서 {직책.value}를 등록하세요 (30분간 유효, 1회용):\n{url}",
-                ephemeral=True,
-            )
-            return
-
-        sheet_id = _extract_sheet_id(링크)
-        if sheet_id is None:
-            await interaction.response.send_message(
-                "구글 스프레드시트 링크가 아닙니다.", ephemeral=True
-            )
-            return
-        await interaction.response.defer()
-        file_bytes, error = await _fetch_sheet_bytes(sheet_id)
-        if error is not None:
-            await interaction.followup.send(error, ephemeral=True)
-            return
-        try:
-            data = await asyncio.to_thread(parse_character_sheet, file_bytes)
-        except ValueError as exc:
-            await interaction.followup.send(f"시트를 읽을 수 없습니다: {exc}", ephemeral=True)
-            return
-        await upsert_character(
+        token = await create_registration_token(
             self.pool,
             interaction.guild_id,
             interaction.user.id,
-            data,
             role=직책.value,
             scenario_id=scenario["id"],
         )
-        await interaction.followup.send(f"{data['name']} ({직책.value})을(를) 등록했습니다.")
+        url = _build_registration_url(token)
+        await interaction.response.send_message(
+            f"아래 링크에서 {직책.value}를 등록하세요 (30분간 유효, 1회용):\n{url}",
+            ephemeral=True,
+        )
 
 
 async def setup(bot: commands.Bot) -> None:

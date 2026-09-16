@@ -4,10 +4,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from intent_analyzer import COC_SKILLS, IntentResult, analyze_intent, build_prompt, parse_intent_response
-from sheet_parser import SKILL_NAMES
+from skill_names import SKILL_NAMES
 
 
-def test_coc_skills_matches_sheet_parser_skill_names():
+def test_coc_skills_matches_skill_names():
     assert set(COC_SKILLS) == SKILL_NAMES
 
 

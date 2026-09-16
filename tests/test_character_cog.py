@@ -1,9 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from bot.cogs.character import CharacterCog, _build_registration_url, _extract_sheet_id
-
-_SHEET_URL = "https://docs.google.com/spreadsheets/d/abc123/edit?usp=sharing"
+from bot.cogs.character import CharacterCog, _build_registration_url
 
 
 def _make_interaction(guild_id=1, user_id=100):
@@ -21,38 +19,6 @@ def _make_bot():
     return bot
 
 
-class _FakeResponse:
-    status = 200
-
-    async def read(self):
-        return b"fake-bytes"
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-class _FakeSession:
-    def get(self, url):
-        return _FakeResponse()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-def test_extract_sheet_id_from_share_link():
-    assert _extract_sheet_id(_SHEET_URL) == "abc123"
-
-
-def test_extract_sheet_id_returns_none_for_non_sheets_url():
-    assert _extract_sheet_id("https://example.com") is None
-
-
 def test_build_registration_url_uses_render_external_url(monkeypatch):
     monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
     assert _build_registration_url("abc") == "https://coc-bot.onrender.com/register/abc"
@@ -64,88 +30,20 @@ def test_build_registration_url_falls_back_to_localhost(monkeypatch):
     assert _build_registration_url("abc") == "http://localhost:9000/register/abc"
 
 
-def test_register_issues_token_link_when_no_link_given(monkeypatch):
+def test_register_issues_token_link(monkeypatch):
     token_mock = AsyncMock(return_value="tok123")
     monkeypatch.setattr("bot.cogs.character.create_registration_token", token_mock)
     monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://coc-bot.onrender.com")
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
 
-    asyncio.run(cog.register.callback(cog, interaction, None))
+    asyncio.run(cog.register.callback(cog, interaction))
 
     token_mock.assert_awaited_once_with(cog.pool, interaction.guild_id, interaction.user.id, role="PC")
     interaction.response.send_message.assert_awaited_once()
     args, kwargs = interaction.response.send_message.call_args
     assert "https://coc-bot.onrender.com/register/tok123" in args[0]
     assert kwargs["ephemeral"] is True
-    interaction.response.defer.assert_not_awaited()
-
-
-def test_register_rejected_for_non_sheet_link(monkeypatch):
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.register.callback(cog, interaction, "https://example.com"))
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "구글 스프레드시트 링크가 아닙니다.", ephemeral=True
-    )
-    interaction.response.defer.assert_not_awaited()
-
-
-def test_register_parses_and_stores_on_success(monkeypatch):
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
-    monkeypatch.setattr(
-        "bot.cogs.character.parse_character_sheet",
-        lambda file_bytes: {"name": "탐사자", "skills": {}},
-    )
-    upsert_mock = AsyncMock()
-    monkeypatch.setattr("bot.cogs.character.upsert_character", upsert_mock)
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
-
-    interaction.response.defer.assert_awaited_once()
-    upsert_mock.assert_awaited_once()
-    interaction.followup.send.assert_awaited_once_with("탐사자 캐릭터를 등록했습니다.")
-
-
-def test_register_reports_fetch_error(monkeypatch):
-    class _FailingResponse(_FakeResponse):
-        status = 404
-
-    class _FailingSession(_FakeSession):
-        def get(self, url):
-            return _FailingResponse()
-
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FailingSession())
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
-
-    interaction.followup.send.assert_awaited_once_with(
-        "시트를 가져올 수 없습니다. 링크 공개 설정을 확인하세요.", ephemeral=True
-    )
-
-
-def test_register_reports_parse_error(monkeypatch):
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
-
-    def _raise(file_bytes):
-        raise ValueError("'이름' 항목을 시트에서 찾을 수 없습니다.")
-
-    monkeypatch.setattr("bot.cogs.character.parse_character_sheet", _raise)
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    asyncio.run(cog.register.callback(cog, interaction, _SHEET_URL))
-
-    interaction.response.defer.assert_awaited_once()
-    interaction.followup.send.assert_awaited_once_with(
-        "시트를 읽을 수 없습니다: '이름' 항목을 시트에서 찾을 수 없습니다.", ephemeral=True
-    )
 
 
 def test_lookup_reports_missing_character(monkeypatch):
@@ -191,25 +89,6 @@ def test_register_scenario_character_rejects_non_keeper(monkeypatch):
         "bot.cogs.character.get_scenario_by_title",
         AsyncMock(return_value={"id": 1, "keeper_user_id": 999}),
     )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction(user_id=100)
-
-    asyncio.run(
-        cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), _SHEET_URL
-        )
-    )
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "이 시나리오의 키퍼만 등록할 수 있습니다.", ephemeral=True
-    )
-
-
-def test_register_scenario_character_token_branch_rejects_non_keeper(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.get_scenario_by_title",
-        AsyncMock(return_value={"id": 1, "keeper_user_id": 999}),
-    )
     token_mock = AsyncMock()
     monkeypatch.setattr("bot.cogs.character.create_registration_token", token_mock)
     cog = CharacterCog(bot=_make_bot())
@@ -217,7 +96,7 @@ def test_register_scenario_character_token_branch_rejects_non_keeper(monkeypatch
 
     asyncio.run(
         cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), None
+            cog, interaction, "시나리오", _FakeRole("NPC")
         )
     )
 
@@ -236,7 +115,7 @@ def test_register_scenario_character_rejects_unknown_scenario(monkeypatch):
 
     asyncio.run(
         cog.register_scenario_character.callback(
-            cog, interaction, "없음", _FakeRole("NPC"), _SHEET_URL
+            cog, interaction, "없음", _FakeRole("NPC")
         )
     )
 
@@ -245,26 +124,7 @@ def test_register_scenario_character_rejects_unknown_scenario(monkeypatch):
     )
 
 
-def test_register_scenario_character_rejects_non_sheet_link(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.character.get_scenario_by_title",
-        AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
-    )
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction(user_id=100)
-
-    asyncio.run(
-        cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), "https://example.com"
-        )
-    )
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "구글 스프레드시트 링크가 아닙니다.", ephemeral=True
-    )
-
-
-def test_register_scenario_character_issues_token_link_when_no_link_given(monkeypatch):
+def test_register_scenario_character_issues_token_link(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.character.get_scenario_by_title",
         AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
@@ -277,7 +137,7 @@ def test_register_scenario_character_issues_token_link_when_no_link_given(monkey
 
     asyncio.run(
         cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), None
+            cog, interaction, "시나리오", _FakeRole("NPC")
         )
     )
 
@@ -288,32 +148,3 @@ def test_register_scenario_character_issues_token_link_when_no_link_given(monkey
     args, kwargs = interaction.response.send_message.call_args
     assert "https://coc-bot.onrender.com/register/tok456" in args[0]
     assert kwargs["ephemeral"] is True
-    interaction.response.defer.assert_not_awaited()
-
-
-def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
-    monkeypatch.setattr(
-        "bot.cogs.character.get_scenario_by_title",
-        AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),
-    )
-    monkeypatch.setattr(
-        "bot.cogs.character.parse_character_sheet",
-        lambda file_bytes: {"name": "관리인", "skills": {}},
-    )
-    upsert_mock = AsyncMock()
-    monkeypatch.setattr("bot.cogs.character.upsert_character", upsert_mock)
-    cog = CharacterCog(bot=_make_bot())
-    interaction = _make_interaction(user_id=100)
-
-    asyncio.run(
-        cog.register_scenario_character.callback(
-            cog, interaction, "시나리오", _FakeRole("NPC"), _SHEET_URL
-        )
-    )
-
-    upsert_mock.assert_awaited_once_with(
-        cog.pool, interaction.guild_id, interaction.user.id,
-        {"name": "관리인", "skills": {}}, role="NPC", scenario_id=7,
-    )
-    interaction.followup.send.assert_awaited_once_with("관리인 (NPC)을(를) 등록했습니다.")
