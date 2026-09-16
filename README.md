@@ -22,7 +22,8 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
   캐릭터시트를 등록할 수 있다(PC와 동일한 양식). `링크`를 생략하면 웹 등록 폼 링크를 받는다
 - `/낭독시작` — 현재 채널 시나리오의 Keeper 낭독을 문장 단위로 출력하고, 키퍼가 "다음" 버튼을
   누르면 다음 문장으로 진행한다(KPC 대사는 자동화하지 않음)
-- `/행동 설명` — 자유 서술 행동을 분석해 필요하면 스킬 판정을 자동으로 굴린다 (판정이 필요 없으면 서술만 응답)
+- `/행동 설명` — 자유 서술 행동을 요약해 서술 임베드로 보여준다. 판정 필요 여부는 판단하지 않으며
+  자동으로 판정을 굴리지 않는다 (판정은 `/판정`으로 직접 굴린다)
 
 ## 작동 원리
 
@@ -82,7 +83,7 @@ CoC-Bot/
 ├── storage.py                    # Postgres 스키마 생성 + 캐릭터/시나리오 CRUD (asyncpg)
 ├── sheet_parser.py                # xlsx 캐릭터시트 파싱 (openpyxl)
 ├── scenario_parser.py             # 구글독스 export?format=html → 부/장면/Keeper 낭독 파싱 (표준 라이브러리 html.parser)
-├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
+├── intent_analyzer.py             # 자유 서술 텍스트 → 행동 요약 (Gemini, 판정 필요 여부는 판단하지 않음)
 ├── bot/
 │   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, 웹 서버 기동, cog 로더, 전역 에러 핸들러
 │   ├── web.py                    # 캐릭터 등록 API + 폼 페이지(web/dist)를 서빙하는 aiohttp 웹 서버
@@ -113,7 +114,7 @@ CoC-Bot/
 | `storage.py` | Postgres 스키마(`characters`, `scenarios`, `scenario_participants`, `registration_tokens`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치, 웹 등록 토큰 발급/조회/소비 — DB 접근 전부가 여기 있다. |
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
-| `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
+| `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 요약해 `IntentResult`(행동 요약, 의도 유형, 목적, 대상)로 변환. 판정이 필요한지/어떤 스킬인지는 판단하지 않는다 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
 | `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 웹 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
 | `bot/web.py` | 캐릭터 등록 토큰 상태 조회(`GET /api/register/{token}`)와 등록 제출(`POST /api/register/{token}`)을 처리하고, `web/dist`에 빌드된 폼 페이지(`GET /register/{token}`)와 정적 자산(`GET /assets/...`), 기능명 목록(`GET /api/skills`)을 서빙하는 aiohttp 웹 서버. `PORT` 환경변수가 있을 때만 기동한다. 정신력(POW)은 필수 입력이며 제출 시 이성(SAN) 시작치·현재치를 POW 값으로 자동 계산해 저장한다(`/산정`이 SAN 없는 캐릭터에서 죽는 것을 방지) |
@@ -124,7 +125,7 @@ CoC-Bot/
 | `bot/cogs/character.py` | 구글시트 링크로 PC 등록(`defer()` 후 `asyncio.to_thread`로 파싱) 또는 링크 생략 시 웹 등록 폼 토큰 링크 발급(`RENDER_EXTERNAL_URL` 기준, 로컬은 `http://localhost:$PORT`로 대체), 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능, 마찬가지로 링크 생략 시 토큰 링크 발급) |
 | `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오조회` |
 | `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, `NarrationView`(키퍼가 "다음" 버튼을 누르면 진행, `PushView`와 같은 메모리 상태 패턴) |
-| `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 분석해 판정이 필요 없으면 서술 임베드를, 필요하면 캐릭터 스킬값을 조회해 `dice.roll_check()`로 판정한다 |
+| `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 요약해 서술 임베드로만 응답한다. 자동 판정 트리거는 없다 |
 | `tests/test_dice_check.py` | 기본 판정·성공등급·보너스/페널티 로직 테스트, `FakeRng` 결정론적 난수 테스트 헬퍼 |
 | `tests/test_dice_notation.py` | 다이스 표기 파서 테스트 |
 | `tests/test_sanity.py` | SAN 체크 로직 테스트 |
