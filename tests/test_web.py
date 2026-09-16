@@ -280,6 +280,33 @@ def test_post_registration_succeeds_and_consumes_token(monkeypatch):
     asyncio.run(_body())
 
 
+def test_post_registration_accepts_cash_and_assets_as_free_text(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={
+                    "name": "탐사자",
+                    "pow": 50,
+                    "cash": "현금 약 8만원",
+                    "assets": "노트북, 카메라, 소형 승용차",
+                },
+            )
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["cash"] == "현금 약 8만원"
+        assert args[3]["assets"] == "노트북, 카메라, 소형 승용차"
+
+    asyncio.run(_body())
+
+
 def test_post_registration_ignores_body_supplied_identity_fields(monkeypatch):
     async def _body():
         _mock_valid_token(monkeypatch)
