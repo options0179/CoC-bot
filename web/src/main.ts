@@ -1,10 +1,10 @@
 import "./style.css";
 import { buildPayload, type FormValues } from "./payload";
 
-const ATTRIBUTE_FIELDS: { key: string; label: string }[] = [
+const ATTRIBUTE_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: "str", label: "근력" },
   { key: "dex", label: "민첩" },
-  { key: "pow", label: "정신력" },
+  { key: "pow", label: "정신력", required: true },
   { key: "con", label: "건강" },
   { key: "app", label: "외모" },
   { key: "edu", label: "교육" },
@@ -70,7 +70,7 @@ function renderForm(token: string): void {
           <div class="attribute-grid">
             ${ATTRIBUTE_FIELDS.map(
               (field) =>
-                `<label>${field.label} <input type="number" name="${field.key}" /></label>`
+                `<label>${field.label} <input type="number" name="${field.key}"${field.required ? " required" : ""} /></label>`
             ).join("")}
           </div>
         </section>
