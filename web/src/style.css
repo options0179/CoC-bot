@@ -81,6 +81,18 @@ label input {
   gap: 0 1rem;
 }
 
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox-field input {
+  display: inline-block;
+  width: auto;
+  margin-top: 0;
+}
+
 .attribute-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

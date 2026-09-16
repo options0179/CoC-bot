@@ -75,6 +75,15 @@ function renderForm(token: string): void {
           </div>
         </section>
         <section>
+          <h2>상태</h2>
+          <label class="checkbox-field">
+            <input type="checkbox" name="major_wound" /> 중상 (HP가 한 번에 최대치의 절반 이상 깎임)
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" name="mp_depleted" /> 빈사 (MP 소진)
+          </label>
+        </section>
+        <section>
           <h2>기능</h2>
           <div id="skill-rows"></div>
           <button type="button" id="add-skill-row">+ 기능 추가</button>
@@ -183,6 +192,8 @@ function renderForm(token: string): void {
 function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): FormValues {
   const field = (name: string) =>
     (form.elements.namedItem(name) as HTMLInputElement | null)?.value ?? "";
+  const checked = (name: string) =>
+    (form.elements.namedItem(name) as HTMLInputElement | null)?.checked ?? false;
 
   const skills = Array.from(skillRows.querySelectorAll<HTMLDivElement>(".skill-row")).map(
     (row) => ({
@@ -207,6 +218,8 @@ function collectFormValues(form: HTMLFormElement, skillRows: HTMLDivElement): Fo
     siz: field("siz"),
     int: field("int"),
     mov: field("mov"),
+    majorWound: checked("major_wound"),
+    mpDepleted: checked("mp_depleted"),
     skills,
   };
 }

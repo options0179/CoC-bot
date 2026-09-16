@@ -14,6 +14,8 @@ export interface FormValues {
   siz: string;
   int: string;
   mov: string;
+  majorWound: boolean;
+  mpDepleted: boolean;
   skills: { name: string; value: string }[];
 }
 
@@ -33,6 +35,8 @@ export interface RegistrationPayload {
   siz: number | null;
   int: number | null;
   mov: number | null;
+  major_wound: boolean;
+  mp_depleted: boolean;
   skills: Record<string, number>;
 }
 
@@ -71,6 +75,8 @@ export function buildPayload(values: FormValues): RegistrationPayload {
     siz: parseIntOrNull(values.siz),
     int: parseIntOrNull(values.int),
     mov: parseIntOrNull(values.mov),
+    major_wound: values.majorWound,
+    mp_depleted: values.mpDepleted,
     skills,
   };
 }

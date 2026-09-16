@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS scenarios (
 );
 
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS player TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS major_wound BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS mp_depleted BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS temp_insanity BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS indefinite_insanity BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'PC';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS scenario_id INTEGER REFERENCES scenarios(id);
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS is_retired BOOLEAN NOT NULL DEFAULT false;
@@ -96,7 +100,11 @@ _CHARACTER_COLUMNS = [
     "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov",
     "hp_current", "hp_max", "san_current", "san_starting",
     "mp_current", "mp_max", "damage_bonus", "build", "cash", "assets", "skills",
+    "major_wound", "mp_depleted",
 ]
+
+# NOT NULL 컬럼이라 값이 없으면 NULL 대신 false로 채워 넣는다.
+_BOOL_COLUMNS = ("major_wound", "mp_depleted")
 
 
 def _quote(column: str) -> str:
@@ -114,6 +122,9 @@ async def upsert_character(
     values = [data.get(col) for col in _CHARACTER_COLUMNS]
     skills_index = _CHARACTER_COLUMNS.index("skills")
     values[skills_index] = json.dumps(values[skills_index] or {})
+    for column in _BOOL_COLUMNS:
+        index = _CHARACTER_COLUMNS.index(column)
+        values[index] = bool(values[index])
 
     quoted = [_quote(c) for c in _CHARACTER_COLUMNS]
     placeholders = ", ".join(f"${i + 5}" for i in range(len(_CHARACTER_COLUMNS)))
@@ -163,16 +174,30 @@ async def get_pc_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> d
 
 
 async def update_san_current(
-    pool: asyncpg.Pool, guild_id: int, user_id: int, new_san: int
+    pool: asyncpg.Pool,
+    guild_id: int,
+    user_id: int,
+    new_san: int,
+    temp_insanity: bool = False,
+    indefinite_insanity: bool = False,
 ) -> bool:
+    # 광기 상태는 한 번 발생하면 유지된다(OR). 이후 굴림이 조건을 만족하지 않는다고
+    # 해서 이미 걸린 광기가 풀리지는 않으므로, 해제는 키퍼 재량(직접 DB/재등록)에 맡긴다.
     async with pool.acquire() as conn:
         result = await conn.execute(
             """
-            UPDATE characters SET san_current = $1, is_retired = $2, updated_at = now()
-            WHERE guild_id = $3 AND discord_user_id = $4 AND role = 'PC'
+            UPDATE characters
+            SET san_current = $1,
+                is_retired = $2,
+                temp_insanity = temp_insanity OR $3,
+                indefinite_insanity = indefinite_insanity OR $4,
+                updated_at = now()
+            WHERE guild_id = $5 AND discord_user_id = $6 AND role = 'PC'
             """,
             new_san,
             new_san == 0,
+            temp_insanity,
+            indefinite_insanity,
             guild_id,
             user_id,
         )

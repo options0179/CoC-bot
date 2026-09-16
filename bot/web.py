@@ -10,6 +10,8 @@ POOL_KEY: web.AppKey = web.AppKey("pool")
 
 _TEXT_FIELDS = ["name", "occupation", "sex", "residence", "birthplace"]
 _INT_FIELDS = ["age", "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov"]
+# 수동 입력 상태(중상/MP 빈사). 광기 플래그는 /산정이 파생하므로 폼에서 받지 않는다.
+_BOOL_FIELDS = ["major_wound", "mp_depleted"]
 
 _WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 
@@ -86,6 +88,14 @@ async def _submit_registration(request: web.Request) -> web.Response:
         )
     data["san_starting"] = data["pow"]
     data["san_current"] = data["pow"]
+
+    for field in _BOOL_FIELDS:
+        value = payload.get(field, False)
+        if not isinstance(value, bool):
+            return web.json_response(
+                {"ok": False, "error": f"{field}은(는) true/false여야 합니다."}, status=400
+            )
+        data[field] = value
 
     skills = payload.get("skills") or {}
     if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):

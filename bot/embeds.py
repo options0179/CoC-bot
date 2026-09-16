@@ -29,7 +29,23 @@ def check_embed(result: CheckResult, label: str = "판정") -> discord.Embed:
     return embed
 
 
-def sanity_embed(result: SanityResult, warnings: list[str] | None = None) -> discord.Embed:
+_STATUS_LABELS = {
+    "major_wound": "중상",
+    "mp_depleted": "MP 빈사",
+    "temp_insanity": "일시적 광기",
+    "indefinite_insanity": "부정형 광기",
+}
+
+
+def status_badges(character: dict) -> list[str]:
+    return [label for key, label in _STATUS_LABELS.items() if character.get(key)]
+
+
+def sanity_embed(
+    result: SanityResult,
+    warnings: list[str] | None = None,
+    statuses: list[str] | None = None,
+) -> discord.Embed:
     outcome = "성공" if result.success else "실패"
     embed = discord.Embed(
         title="SAN 체크",
@@ -39,6 +55,8 @@ def sanity_embed(result: SanityResult, warnings: list[str] | None = None) -> dis
     embed.add_field(name="결과", value=outcome)
     embed.add_field(name="SAN 손실", value=f"-{result.loss}")
     embed.add_field(name="남은 SAN", value=str(result.remaining_san))
+    if statuses:
+        embed.add_field(name="상태", value=" · ".join(statuses), inline=False)
     for warning in warnings or []:
         embed.add_field(name="⚠️ 경고", value=warning, inline=False)
     return embed
@@ -91,6 +109,9 @@ def character_embed(character: dict, owner_name: str) -> discord.Embed:
         ),
         inline=False,
     )
+    badges = status_badges(character)
+    if badges:
+        embed.add_field(name="상태", value=" · ".join(badges), inline=False)
     skills = character.get("skills") or {}
     top_skills = sorted(skills.items(), key=lambda kv: kv[1], reverse=True)[:10]
     if top_skills:

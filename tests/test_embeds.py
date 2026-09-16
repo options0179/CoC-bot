@@ -136,6 +136,30 @@ def test_character_embed_omits_player_field_when_unknown():
     assert all(f.name != "플레이어" for f in embed.fields)
 
 
+def test_character_embed_shows_status_badges():
+    character = _sample_character(
+        major_wound=True, mp_depleted=True, temp_insanity=True, indefinite_insanity=True
+    )
+    embed = character_embed(character, owner_name="탐사자")
+    fields = {f.name: f.value for f in embed.fields}
+    assert "중상" in fields["상태"]
+    assert "MP 빈사" in fields["상태"]
+    assert "일시적 광기" in fields["상태"]
+    assert "부정형 광기" in fields["상태"]
+
+
+def test_character_embed_omits_status_field_when_all_clear():
+    embed = character_embed(_sample_character(), owner_name="탐사자")
+    assert all(f.name != "상태" for f in embed.fields)
+
+
+def test_sanity_embed_shows_status_field():
+    result = SanityResult(roll=80, current_san=50, success=False, loss=5, remaining_san=45)
+    embed = sanity_embed(result, warnings=[], statuses=["일시적 광기"])
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["상태"] == "일시적 광기"
+
+
 def test_character_embed_shows_retired_badge():
     embed = character_embed(_sample_character(is_retired=True), owner_name="탐사자")
     assert "퇴장" in embed.title

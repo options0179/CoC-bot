@@ -18,6 +18,8 @@ function baseValues(overrides: Partial<FormValues> = {}): FormValues {
     siz: "",
     int: "",
     mov: "",
+    majorWound: false,
+    mpDepleted: false,
     skills: [],
     ...overrides,
   };
@@ -50,6 +52,12 @@ describe("buildPayload", () => {
       })
     );
     expect(payload.skills).toEqual({ 회계: 40 });
+  });
+
+  it("passes the manual status checkboxes through as booleans", () => {
+    const payload = buildPayload(baseValues({ majorWound: true, mpDepleted: false }));
+    expect(payload.major_wound).toBe(true);
+    expect(payload.mp_depleted).toBe(false);
   });
 
   it("trims skill names before using them as keys", () => {
