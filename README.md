@@ -21,8 +21,8 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 - `/시나리오조회` — 현재 채널에 배정된 시나리오의 진행 상황과 참가자를 보여준다
 - `/시나리오캐릭터등록 시나리오 직책:<KPC|NPC> 링크:<구글 스프레드시트 URL>` — 그 시나리오의
   키퍼만 KPC/NPC 캐릭터시트를 등록할 수 있다(PC와 같은 양식)
-- `/낭독시작` — 현재 채널 시나리오의 Keeper 낭독을 문장 단위로 출력하고, 키퍼가 "다음" 버튼을
-  누르면 다음 문장으로 진행한다(KPC 대사는 자동화하지 않음)
+- `/낭독시작` — 현재 채널 시나리오의 Keeper 낭독을 문장 단위로 출력하고, 등록된 PC와 키퍼의
+  2/3 동의로 다음 문장으로 진행한다(KPC 대사는 자동화하지 않음)
 - `/행동 설명` — 자유 서술 행동을 분석해 필요하면 스킬 판정을 자동으로 굴린다 (판정이 필요 없으면 서술만 응답)
 
 ## 작동 원리
@@ -57,18 +57,19 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 `embeds.check_embed()`로 임베드에 담음 → 판정이 실패/펌블이면 재도전용
 `PushView`(버튼)를 함께 첨부 → 완성된 메시지를 응답으로 보낸다.
 
-**유일한 "상태": 푸시 롤 버튼.** `/판정`이 실패하면 붙는 `PushView`는
-`discord.ui.View`로, 메모리에서 직전 판정 정보(스킬값·보너스·페널티)를 5분간
-들고 있다가 버튼이 눌리면 재판정한다. DB에 쓰지 않으므로 프로세스가 재시작되면
-사라지는데, 이는 의도된 트레이드오프다.
+**게임 상태 저장.** HP/MP/SAN 및 시나리오 낭독 위치는 Postgres에 저장한다. 낭독 투표는
+메시지별 `NarrationView` 메모리에서만 집계되며, 봇이 재시작되면 투표는 초기화되고
+저장된 현재 문장에서 다시 시작한다. `/판정`의 `PushView`도 메모리에만 5분간 유지되며,
+재시작되면 버튼은 사라진다.
 
 **에러 처리.** `bot/main.py`의 전역 에러 핸들러(`on_app_command_error`)가
 `dice.py`에서 던진 `ValueError`(잘못된 다이스 표기, SAN 손실식 형식 오류 등)를
 잡아 한국어 메시지로 사용자에게만 보이게(ephemeral) 응답한다. 각 cog는 이런
 입력 검증 오류를 직접 처리하지 않고 이 전역 핸들러에 위임한다.
 
-**봇 기동.** `bot/main.py`의 `main()`이 `DISCORD_TOKEN`, `DATABASE_URL`, `GEMINI_API_KEY`
-환경변수를 모두 확인하고, 하나라도 없으면 기동을 중단한다. 연결되면 `CoCBot.setup_hook()`이
+**봇 기동.** `bot/main.py`의 `main()`은 `DISCORD_TOKEN`과 `DATABASE_URL`이 없으면 기동을
+중단한다. Gemini 키는 `/행동`에서만 필요하므로 없더라도 다른 명령은 계속 쓸 수 있다.
+연결되면 `CoCBot.setup_hook()`이
 가장 먼저 `storage.create_pool()`로 Postgres 커넥션 풀을 만들고(스키마도 이때
 생성/확인한다), 곧바로 `bot/web.py`의 aiohttp 헬스체크 서버를 기동한다(Render의 헬스체크가
 Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tree.sync()`보다 먼저 포트를
@@ -85,7 +86,7 @@ CoC-Bot/
 ├── scenario_parser.py             # 구글독스 export?format=html → 부/장면/Keeper 낭독 파싱 (표준 라이브러리 html.parser)
 ├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
 ├── bot/
-│   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, 웹 서버 기동, cog 로더, 전역 에러 핸들러
+│   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, 헬스체크 서버 기동, cog 로더, 전역 에러 핸들러
 │   ├── web.py                    # Render 헬스체크용 aiohttp 루트·/health 엔드포인트
 │   ├── embeds.py                # 판정/캐릭터/시나리오/낭독 결과 → 한국어 Discord 임베드 포맷
 │   └── cogs/
@@ -94,7 +95,7 @@ CoC-Bot/
 │       ├── opposed.py           # /대립 커맨드
 │       ├── character.py         # /캐릭터등록, /캐릭터조회, /시나리오캐릭터등록 커맨드
 │       ├── scenario.py          # /시나리오등록, /시나리오시작, /시나리오조회 커맨드
-│       ├── narration.py         # /낭독시작 커맨드 + NarrationView(키퍼 전용 진행 버튼)
+│       ├── narration.py         # /낭독시작 커맨드 + 참가자 2/3 투표 View
 │       └── action.py            # /행동 커맨드
 ├── tests/                       # bot/, dice.py, storage.py, sheet_parser.py 구조를 그대로 미러링하는 pytest 테스트
 ├── requirements.in               # 봇 실행 의존성 직접 목록
@@ -119,7 +120,7 @@ CoC-Bot/
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
-| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 헬스체크 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL·Gemini API 키 가드) |
+| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 헬스체크 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL 가드) |
 | `bot/web.py` | Render 상태 확인용 `/` 및 `/health` 응답만 제공하는 aiohttp 서버. `PORT` 환경변수가 있을 때만 기동한다 |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`, 캐릭터(역할 배지 포함)/시나리오/Keeper 낭독 딕셔너리를 한국어 Discord 임베드로 포맷 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
@@ -127,7 +128,7 @@ CoC-Bot/
 | `bot/cogs/opposed.py` | `/대립` 슬래시 커맨드 |
 | `bot/cogs/character.py` | 구글 스프레드시트 링크로 PC 등록(`defer()` 후 `aiohttp`로 xlsx export fetch → `asyncio.to_thread`로 파싱), 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능) |
 | `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오참가`(본인 PC를 로스터에 추가), `/시나리오조회` |
-| `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, `NarrationView`(키퍼가 "다음" 버튼을 누르면 진행, `PushView`와 같은 메모리 상태 패턴) |
+| `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, Keeper와 참가 PC의 중복 없는 2/3 투표 및 DB 진행 위치 갱신 |
 | `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 분석해 판정이 필요 없으면 서술 임베드를, 필요하면 캐릭터 스킬값을 조회해 `dice.roll_check()`로 판정한다 |
 | `tests/test_dice_check.py` | 기본 판정·성공등급·보너스/페널티 로직 테스트, `FakeRng` 결정론적 난수 테스트 헬퍼 |
 | `tests/test_dice_notation.py` | 다이스 표기 파서 테스트 |
@@ -136,7 +137,7 @@ CoC-Bot/
 | `tests/test_embeds.py` | 임베드 포맷 테스트 |
 | `tests/test_main.py` | 봇 엔트리포인트(토큰/DB URL 미설정 시 종료) 테스트 |
 | `tests/test_check_cog.py` / `test_sanity_cog.py` / `test_opposed_cog.py` / `test_character_cog.py` / `test_scenario_cog.py` / `test_narration_cog.py` | 각 슬래시 커맨드 cog 테스트 (Discord Interaction은 mock으로 대체) |
-| `tests/test_narration_view.py` | `NarrationView`의 키퍼 전용 진행 버튼 로직 테스트 |
+| `tests/test_narration_view.py` | `NarrationView` 투표 권한, 중복 투표, 정족수, 오래된 진행 및 완료 처리 테스트 |
 | `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
 | `tests/test_scenario_parser.py` | 구글독스 HTML 아웃라인 파싱, 문장 분리(대사 보존 포함) 테스트 |
 | `tests/test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
@@ -162,15 +163,18 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export DISCORD_TOKEN=발급받은_토큰
 export DATABASE_URL=postgres://user:password@localhost/coc_bot
+# /행동을 사용할 때만 필요
 export GEMINI_API_KEY=발급받은_Gemini_API_키
 python -m bot.main
 ```
 
 ## Docker로 실행
 
+Gemini 키는 `/행동` 기능을 사용할 때만 전달하면 된다.
+
 ```bash
 docker build -t coc-bot .
-docker run -e DISCORD_TOKEN=발급받은_토큰 -e DATABASE_URL=postgres://user:password@host/coc_bot -e GEMINI_API_KEY=발급받은_Gemini_API_키 coc-bot
+docker run -e DISCORD_TOKEN=발급받은_토큰 -e DATABASE_URL=postgres://user:password@host/coc_bot coc-bot
 ```
 
 ## 저비용 호스팅

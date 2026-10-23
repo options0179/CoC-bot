@@ -158,6 +158,16 @@ def test_scenario_embed_shows_placeholder_for_empty_roster():
     assert fields["참가자(PC)"] == "(없음)"
 
 
+def test_scenario_embed_shows_completed_position():
+    scenario = {
+        "title": "완료 시나리오", "keeper_user_id": 1,
+        "current_scene_index": 1, "structure": [{"scene": "마지막 장면"}],
+    }
+    embed = scenario_embed(scenario, [])
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["진행 위치"] == "완료"
+
+
 def test_keeper_narration_embed_shows_scene_and_line():
     embed = keeper_narration_embed("장면 1. 일상", "늦은 오후입니다.")
     assert embed.title == "장면 1. 일상"

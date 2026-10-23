@@ -16,6 +16,7 @@ def _make_interaction(user_id=1, guild_id=10):
 
 
 def test_action_sends_narration_when_no_roll_required(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(
         "bot.cogs.action.analyze_intent",
         lambda text, scene_context: IntentResult(
@@ -39,6 +40,7 @@ def test_action_sends_narration_when_no_roll_required(monkeypatch):
 
 
 def test_action_rolls_check_when_skill_value_found(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(
         "bot.cogs.action.analyze_intent",
         lambda text, scene_context: IntentResult(
@@ -71,6 +73,7 @@ def test_action_rolls_check_when_skill_value_found(monkeypatch):
 
 
 def test_action_sends_ephemeral_message_when_skill_value_missing(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(
         "bot.cogs.action.analyze_intent",
         lambda text, scene_context: IntentResult(
@@ -97,6 +100,7 @@ def test_action_sends_ephemeral_message_when_skill_value_missing(monkeypatch):
 
 
 def test_action_sends_narration_when_requires_roll_but_skill_unknown(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(
         "bot.cogs.action.analyze_intent",
         lambda text, scene_context: IntentResult(
@@ -125,6 +129,7 @@ def test_action_sends_narration_when_requires_roll_but_skill_unknown(monkeypatch
 
 
 def test_action_sends_ephemeral_message_when_analyze_intent_raises_value_error(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     def _raise(text, scene_context):
         raise ValueError("아무 메시지")
 
@@ -137,3 +142,18 @@ def test_action_sends_ephemeral_message_when_analyze_intent_raises_value_error(m
     interaction.followup.send.assert_awaited_once()
     _, kwargs = interaction.followup.send.call_args
     assert kwargs.get("ephemeral") is True
+
+
+def test_action_reports_when_gemini_is_not_configured(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    analyze = MagicMock()
+    monkeypatch.setattr("bot.cogs.action.analyze_intent", analyze)
+    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
+    interaction = _make_interaction()
+
+    asyncio.run(cog.action.callback(cog, interaction, 설명="주변을 살핀다"))
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "/행동 기능은 GEMINI_API_KEY 설정이 필요합니다.", ephemeral=True
+    )
+    analyze.assert_not_called()

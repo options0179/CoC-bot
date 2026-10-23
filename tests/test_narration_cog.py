@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from bot.cogs.narration import NarrationCog, _next_position
+from bot.cogs.narration import NarrationCog, NarrationView, _next_position
 
 
 def _make_interaction(guild_id=1, user_id=100, channel_id=555):
@@ -70,7 +70,7 @@ def test_start_reports_when_narration_exhausted(monkeypatch):
     )
 
 
-def test_start_sends_first_line_embed(monkeypatch):
+def test_start_rejects_non_participant(monkeypatch):
     scenario = {
         "id": 1, "structure": _STRUCTURE, "current_scene_index": 0,
         "current_line_index": 0, "keeper_user_id": 100,
@@ -78,73 +78,39 @@ def test_start_sends_first_line_embed(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.narration.get_scenario_by_channel", AsyncMock(return_value=scenario)
     )
-
-    class _NeverEndingView:
-        async def wait(self):
-            await asyncio.sleep(3600)
-
     monkeypatch.setattr(
-        "bot.cogs.narration.NarrationView", lambda *a, **k: _NeverEndingView()
+        "bot.cogs.narration.get_roster",
+        AsyncMock(return_value=[{"discord_user_id": 101}]),
+    )
+    cog = NarrationCog(bot=_make_bot())
+    interaction = _make_interaction(user_id=999)
+
+    asyncio.run(cog.start.callback(cog, interaction))
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "키퍼 또는 시나리오 참가 PC만 낭독을 시작할 수 있습니다.", ephemeral=True
+    )
+
+
+def test_start_sends_current_line_with_pc_and_keeper_voters(monkeypatch):
+    scenario = {
+        "id": 1, "structure": _STRUCTURE, "current_scene_index": 0,
+        "current_line_index": 0, "keeper_user_id": 100,
+    }
+    monkeypatch.setattr(
+        "bot.cogs.narration.get_scenario_by_channel", AsyncMock(return_value=scenario)
+    )
+    monkeypatch.setattr(
+        "bot.cogs.narration.get_roster",
+        AsyncMock(return_value=[{"discord_user_id": 101}, {"discord_user_id": 102}]),
     )
     cog = NarrationCog(bot=_make_bot())
     interaction = _make_interaction()
 
-    async def _run_with_timeout():
-        task = asyncio.ensure_future(cog.start.callback(cog, interaction))
-        await asyncio.sleep(0.05)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    asyncio.run(_run_with_timeout())
+    asyncio.run(cog.start.callback(cog, interaction))
 
     interaction.response.send_message.assert_awaited_once()
     _, kwargs = interaction.response.send_message.call_args
-    assert kwargs["embed"].title == "장면 1"
     assert kwargs["embed"].description == "문장1"
-
-
-def test_start_advances_to_next_line_after_vote(monkeypatch):
-    scenario = {
-        "id": 1, "structure": _STRUCTURE, "current_scene_index": 0,
-        "current_line_index": 0, "keeper_user_id": 100,
-    }
-    monkeypatch.setattr(
-        "bot.cogs.narration.get_scenario_by_channel", AsyncMock(return_value=scenario)
-    )
-    advance_mock = AsyncMock()
-    monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance_mock)
-
-    class _OneShotView:
-        _created = 0
-
-        def __init__(self, *a, **k):
-            _OneShotView._created += 1
-            self._n = _OneShotView._created
-
-        async def wait(self):
-            if self._n == 1:
-                return False
-            await asyncio.sleep(3600)
-
-    monkeypatch.setattr("bot.cogs.narration.NarrationView", _OneShotView)
-    cog = NarrationCog(bot=_make_bot())
-    interaction = _make_interaction()
-
-    async def _run_with_timeout():
-        task = asyncio.ensure_future(cog.start.callback(cog, interaction))
-        await asyncio.sleep(0.05)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    asyncio.run(_run_with_timeout())
-
-    advance_mock.assert_awaited_once_with(cog.pool, 1, 0, 1)
-    interaction.followup.send.assert_awaited_once()
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs["embed"].description == "문장2"
+    assert isinstance(kwargs["view"], NarrationView)
+    assert kwargs["view"].eligible_user_ids == {100, 101, 102}

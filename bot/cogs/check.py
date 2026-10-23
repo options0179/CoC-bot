@@ -7,8 +7,9 @@ from dice import is_success, roll_check
 
 
 class PushView(discord.ui.View):
-    def __init__(self, skill: int, bonus: int, penalty: int) -> None:
+    def __init__(self, owner_user_id: int, skill: int, bonus: int, penalty: int) -> None:
         super().__init__(timeout=300)
+        self.owner_user_id = owner_user_id
         self.skill = skill
         self.bonus = bonus
         self.penalty = penalty
@@ -16,6 +17,11 @@ class PushView(discord.ui.View):
 
     @discord.ui.button(label="푸시", style=discord.ButtonStyle.danger)
     async def push(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_user_id:
+            await interaction.response.send_message(
+                "이 판정을 실행한 사용자만 푸시할 수 있습니다.", ephemeral=True
+            )
+            return
         if self.pushed:
             await interaction.response.send_message("이미 푸시했습니다.", ephemeral=True)
             return
@@ -46,7 +52,11 @@ class CheckCog(commands.Cog):
     ) -> None:
         result = roll_check(스킬값, bonus=보너스, penalty=페널티)
         embed = check_embed(result)
-        view = None if is_success(result.level) else PushView(스킬값, 보너스, 페널티)
+        view = (
+            None
+            if is_success(result.level)
+            else PushView(interaction.user.id, 스킬값, 보너스, 페널티)
+        )
         await interaction.response.send_message(embed=embed, view=view)
 
 

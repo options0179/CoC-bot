@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 import discord
 from discord import app_commands
@@ -24,6 +25,11 @@ class ActionCog(commands.Cog):
     @app_commands.describe(설명="캐릭터가 하려는 행동을 문장으로 적어주세요.")
     @app_commands.guild_only()
     async def action(self, interaction: discord.Interaction, 설명: str) -> None:
+        if not os.environ.get("GEMINI_API_KEY"):
+            await interaction.response.send_message(
+                "/행동 기능은 GEMINI_API_KEY 설정이 필요합니다.", ephemeral=True
+            )
+            return
         await interaction.response.defer()
         try:
             intent = await asyncio.to_thread(analyze_intent, 설명, "")

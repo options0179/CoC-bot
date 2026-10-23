@@ -4,6 +4,7 @@ import os
 import pytest
 
 from storage import (
+    advance_narration_position,
     bind_scenario_channel,
     create_scenario,
     get_roster,
@@ -153,5 +154,24 @@ def test_join_scenario_adds_pc_to_roster_idempotently(run_db):
         await join_scenario(pool, scenario_id, pc["id"])
         await join_scenario(pool, scenario_id, pc["id"])
         assert [c["name"] for c in await get_roster(pool, scenario_id)] == ["탐사자"]
+
+    run_db(_body)
+
+
+def test_narration_position_uses_compare_and_set_and_marks_completion(run_db):
+    async def _body(pool):
+        scenario_id = await create_scenario(
+            pool,
+            guild_id=1,
+            title="완료 상태",
+            keeper_user_id=1,
+            doc_url="https://x",
+            structure=SAMPLE_STRUCTURE,
+        )
+        assert await advance_narration_position(pool, scenario_id, 0, 0, 0, 1) is True
+        assert await advance_narration_position(pool, scenario_id, 0, 0, 1, 0) is False
+        assert await advance_narration_position(pool, scenario_id, 0, 1, 1, 0) is True
+        scenario = await get_scenario_by_title(pool, 1, "완료 상태")
+        assert (scenario["current_scene_index"], scenario["current_line_index"]) == (1, 0)
 
     run_db(_body)

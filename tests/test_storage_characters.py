@@ -289,7 +289,12 @@ def test_get_pc_character_returns_pc(run_db):
 
 def test_resolve_sanity_check_serializes_and_persists_both_losses(run_db):
     async def _body(pool):
-        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        await upsert_character(
+            pool,
+            guild_id=1,
+            user_id=100,
+            data=dict(SAMPLE_CHARACTER, san_current=50, san_starting=50),
+        )
         results = await asyncio.gather(
             resolve_sanity_check(pool, 1, 100, "1/1"),
             resolve_sanity_check(pool, 1, 100, "1/1"),

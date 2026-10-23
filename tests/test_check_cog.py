@@ -5,10 +5,11 @@ from bot.cogs.check import CheckCog, PushView
 from dice import CheckResult, SuccessLevel
 
 
-def _make_interaction():
+def _make_interaction(user_id=7):
     interaction = MagicMock()
     interaction.response = AsyncMock()
     interaction.followup = AsyncMock()
+    interaction.user = MagicMock(id=user_id)
     return interaction
 
 
@@ -18,7 +19,7 @@ def test_check_attaches_push_view_on_failure(monkeypatch):
         lambda skill, bonus=0, penalty=0: CheckResult(roll=90, skill=skill, level=SuccessLevel.FAIL),
     )
     cog = CheckCog(bot=MagicMock())
-    interaction = _make_interaction()
+    interaction = _make_interaction(user_id=8)
 
     asyncio.run(cog.check.callback(cog, interaction, 스킬값=50, 보너스=0, 페널티=0))
 
@@ -46,7 +47,7 @@ def test_push_view_reroll_disables_button_and_sends_followup(monkeypatch):
         "bot.cogs.check.roll_check",
         lambda skill, bonus=0, penalty=0: CheckResult(roll=5, skill=skill, level=SuccessLevel.EXTREME),
     )
-    view = PushView(skill=50, bonus=0, penalty=0)
+    view = PushView(owner_user_id=7, skill=50, bonus=0, penalty=0)
     interaction = _make_interaction()
 
     # discord.py binds ui.button items to the view instance at construction
@@ -65,7 +66,7 @@ def test_push_view_second_click_is_noop(monkeypatch):
         "bot.cogs.check.roll_check",
         lambda skill, bonus=0, penalty=0: CheckResult(roll=5, skill=skill, level=SuccessLevel.EXTREME),
     )
-    view = PushView(skill=50, bonus=0, penalty=0)
+    view = PushView(owner_user_id=7, skill=50, bonus=0, penalty=0)
     view.pushed = True
     interaction = _make_interaction()
 
@@ -73,3 +74,16 @@ def test_push_view_second_click_is_noop(monkeypatch):
 
     interaction.response.send_message.assert_awaited_once_with("이미 푸시했습니다.", ephemeral=True)
     interaction.response.edit_message.assert_not_called()
+
+
+def test_push_view_rejects_another_users_click():
+    view = PushView(owner_user_id=7, skill=50, bonus=0, penalty=0)
+    interaction = _make_interaction()
+    interaction.user.id = 8
+
+    asyncio.run(view.push.callback(interaction))
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "이 판정을 실행한 사용자만 푸시할 수 있습니다.", ephemeral=True
+    )
+    assert view.pushed is False

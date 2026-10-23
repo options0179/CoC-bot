@@ -34,6 +34,11 @@ def test_parse_dice_notation_count_too_high_raises():
         parse_dice_notation("101d6")
 
 
+def test_parse_dice_notation_zero_count_raises():
+    with pytest.raises(ValueError):
+        parse_dice_notation("0d6")
+
+
 def test_parse_dice_notation_sides_too_high_raises():
     with pytest.raises(ValueError):
         parse_dice_notation("1d1001")

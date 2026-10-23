@@ -313,12 +313,21 @@ async def join_scenario(pool: asyncpg.Pool, scenario_id: int, character_id: int)
 
 
 async def advance_narration_position(
-    pool: asyncpg.Pool, scenario_id: int, scene_index: int, line_index: int
-) -> None:
+    pool: asyncpg.Pool,
+    scenario_id: int,
+    expected_scene_index: int,
+    expected_line_index: int,
+    scene_index: int,
+    line_index: int,
+) -> bool:
     async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE scenarios SET current_scene_index = $1, current_line_index = $2 WHERE id = $3",
+        result = await conn.execute(
+            """UPDATE scenarios SET current_scene_index = $1, current_line_index = $2
+            WHERE id = $3 AND current_scene_index = $4 AND current_line_index = $5""",
             scene_index,
             line_index,
             scenario_id,
+            expected_scene_index,
+            expected_line_index,
         )
+    return result == "UPDATE 1"
