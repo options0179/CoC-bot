@@ -2,6 +2,9 @@ import asyncpg
 import json
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Literal
+
+from dice import SanityResult, sanity_check
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS characters (
@@ -170,27 +173,45 @@ async def get_pc_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> d
     return _row_to_character(row)
 
 
-async def update_san_current(
-    pool: asyncpg.Pool, guild_id: int, user_id: int, new_san: int
-) -> bool:
+async def resolve_sanity_check(
+    pool: asyncpg.Pool, guild_id: int, user_id: int, formula: str
+) -> tuple[Literal["missing", "retired", "incomplete", "ok"], SanityResult | None]:
     async with pool.acquire() as conn:
-        result = await conn.execute(
-            """
-            UPDATE characters SET san_current = $1, is_retired = $2, updated_at = now()
-            WHERE guild_id = $3 AND discord_user_id = $4 AND role = 'PC'
-            """,
-            new_san,
-            new_san == 0,
-            guild_id,
-            user_id,
-        )
-    return result == "UPDATE 1"
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                SELECT san_current, is_retired FROM characters
+                WHERE guild_id = $1 AND discord_user_id = $2 AND role = 'PC'
+                FOR UPDATE
+                """,
+                guild_id,
+                user_id,
+            )
+            if row is None:
+                return "missing", None
+            if row["is_retired"]:
+                return "retired", None
+            if row["san_current"] is None:
+                return "incomplete", None
+
+            result = sanity_check(row["san_current"], formula)
+            await conn.execute(
+                """
+                UPDATE characters SET san_current = $1, is_retired = $2, updated_at = now()
+                WHERE guild_id = $3 AND discord_user_id = $4 AND role = 'PC'
+                """,
+                result.remaining_san,
+                result.remaining_san == 0,
+                guild_id,
+                user_id,
+            )
+    return "ok", result
 
 
 async def get_skill_value(
     pool: asyncpg.Pool, guild_id: int, user_id: int, skill_name: str
 ) -> int | None:
-    character = await get_character(pool, guild_id, user_id)
+    character = await get_pc_character(pool, guild_id, user_id)
     if character is None:
         return None
     return character["skills"].get(skill_name)

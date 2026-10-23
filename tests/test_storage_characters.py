@@ -8,7 +8,7 @@ from storage import (
     get_character,
     get_pc_character,
     get_skill_value,
-    update_san_current,
+    resolve_sanity_check,
     upsert_character,
 )
 
@@ -107,6 +107,21 @@ def test_get_skill_value_returns_value_when_present(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
         assert await get_skill_value(pool, guild_id=1, user_id=100, skill_name="회계") == 5
+
+    run_db(_body)
+
+
+def test_get_skill_value_uses_pc_when_owner_also_has_npc(run_db):
+    async def _body(pool):
+        from storage import create_scenario
+
+        scenario_id = await create_scenario(
+            pool, guild_id=1, title="시나리오", keeper_user_id=100, doc_url="https://x", structure=[]
+        )
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        npc = dict(SAMPLE_CHARACTER, name="NPC", skills={"회계": 90})
+        await upsert_character(pool, guild_id=1, user_id=100, data=npc, role="NPC", scenario_id=scenario_id)
+        assert await get_skill_value(pool, 1, 100, "회계") == 5
 
     run_db(_body)
 
@@ -234,30 +249,16 @@ def test_get_pc_character_returns_pc(run_db):
     run_db(_body)
 
 
-def test_update_san_current_updates_value(run_db):
+def test_resolve_sanity_check_serializes_and_persists_both_losses(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
-        assert await update_san_current(pool, guild_id=1, user_id=100, new_san=30) is True
+        results = await asyncio.gather(
+            resolve_sanity_check(pool, 1, 100, "1/1"),
+            resolve_sanity_check(pool, 1, 100, "1/1"),
+        )
+        assert [status for status, _ in results] == ["ok", "ok"]
         result = await get_pc_character(pool, guild_id=1, user_id=100)
-        assert result["san_current"] == 30
+        assert result["san_current"] == 48
         assert result["is_retired"] is False
-
-    run_db(_body)
-
-
-def test_update_san_current_zero_marks_retired(run_db):
-    async def _body(pool):
-        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
-        await update_san_current(pool, guild_id=1, user_id=100, new_san=0)
-        result = await get_pc_character(pool, guild_id=1, user_id=100)
-        assert result["san_current"] == 0
-        assert result["is_retired"] is True
-
-    run_db(_body)
-
-
-def test_update_san_current_returns_false_when_no_pc(run_db):
-    async def _body(pool):
-        assert await update_san_current(pool, guild_id=1, user_id=999, new_san=10) is False
 
     run_db(_body)

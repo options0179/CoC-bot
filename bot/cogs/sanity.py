@@ -3,8 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.embeds import sanity_embed
-from dice import sanity_check
-from storage import get_pc_character, update_san_current
+from storage import resolve_sanity_check
 
 
 class SanityCog(commands.Cog):
@@ -16,26 +15,27 @@ class SanityCog(commands.Cog):
     @app_commands.describe(손실식="성공손실/실패손실 형식 (예: 1/1d4+1)")
     @app_commands.guild_only()
     async def sanity(self, interaction: discord.Interaction, 손실식: str) -> None:
-        character = await get_pc_character(self.pool, interaction.guild_id, interaction.user.id)
-        if character is None:
+        status, result = await resolve_sanity_check(
+            self.pool, interaction.guild_id, interaction.user.id, 손실식
+        )
+        if status == "missing":
             await interaction.response.send_message("등록된 캐릭터가 없습니다.", ephemeral=True)
             return
-        if character["is_retired"]:
+        if status == "retired":
             await interaction.response.send_message(
                 "이미 영구적 광기로 퇴장한 캐릭터입니다.", ephemeral=True
             )
             return
-
-        current_san = character["san_current"]
-        result = sanity_check(current_san, 손실식)
-        await update_san_current(
-            self.pool, interaction.guild_id, interaction.user.id, result.remaining_san
-        )
+        if status == "incomplete" or result is None:
+            await interaction.response.send_message(
+                "캐릭터의 SAN 값이 없습니다. 캐릭터 시트를 다시 등록해주세요.", ephemeral=True
+            )
+            return
 
         warnings = []
         if result.loss >= 5:
             warnings.append("이번 손실이 5 이상 — 일시적 광기 판정 필요(INT 판정, 키퍼 재량으로 진행)")
-        if current_san > 0 and result.loss >= current_san / 5:
+        if result.current_san > 0 and result.loss >= result.current_san / 5:
             warnings.append("이번 손실이 직전 SAN의 1/5 이상 — 부정형 광기 위험")
         if result.remaining_san == 0:
             warnings.append("SAN 0 도달 — 영구적 광기로 퇴장 처리되었습니다")
