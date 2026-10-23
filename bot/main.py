@@ -42,7 +42,7 @@ class CoCBot(commands.Bot):
         port = os.environ.get("PORT")
         if not port:
             return
-        app = create_app(self.pool)
+        app = create_app()
         self._web_runner = web.AppRunner(app)
         await self._web_runner.setup()
         site = web.TCPSite(self._web_runner, "0.0.0.0", int(port))

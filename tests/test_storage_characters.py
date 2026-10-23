@@ -95,6 +95,44 @@ def test_upsert_overwrites_existing(run_db):
     run_db(_body)
 
 
+def test_reregister_preserves_current_resources(run_db):
+    async def _body(pool):
+        original = dict(
+            SAMPLE_CHARACTER,
+            hp_current=20,
+            hp_max=20,
+            mp_current=11,
+            mp_max=11,
+            san_current=55,
+            san_starting=55,
+        )
+        await upsert_character(pool, guild_id=1, user_id=100, data=original)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE characters SET hp_current = 12, mp_current = 4, san_current = 31
+                WHERE guild_id = 1 AND discord_user_id = 100"""
+            )
+
+        sheet_update = dict(
+            original,
+            name="개명한탐사자",
+            hp_current=24,
+            hp_max=24,
+            mp_current=12,
+            mp_max=12,
+            san_current=60,
+            san_starting=60,
+        )
+        await upsert_character(pool, guild_id=1, user_id=100, data=sheet_update)
+
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["name"] == "개명한탐사자"
+        assert (result["hp_current"], result["mp_current"], result["san_current"]) == (12, 4, 31)
+        assert (result["hp_max"], result["mp_max"], result["san_starting"]) == (24, 12, 60)
+
+    run_db(_body)
+
+
 def test_characters_scoped_by_guild(run_db):
     async def _body(pool):
         await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)

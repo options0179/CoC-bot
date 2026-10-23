@@ -1,7 +1,5 @@
 import asyncpg
 import json
-import secrets
-from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from dice import SanityResult, sanity_check
@@ -72,15 +70,6 @@ CREATE TABLE IF NOT EXISTS scenario_participants (
     PRIMARY KEY (scenario_id, character_id)
 );
 
-CREATE TABLE IF NOT EXISTS registration_tokens (
-    token TEXT PRIMARY KEY,
-    guild_id BIGINT NOT NULL,
-    discord_user_id BIGINT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'PC',
-    scenario_id INTEGER REFERENCES scenarios(id),
-    expires_at TIMESTAMPTZ NOT NULL,
-    used_at TIMESTAMPTZ
-);
 """
 
 
@@ -117,7 +106,17 @@ async def _upsert_character(
 
     quoted = [_quote(c) for c in _CHARACTER_COLUMNS]
     placeholders = ", ".join(f"${i + 5}" for i in range(len(_CHARACTER_COLUMNS)))
-    update_clause = ", ".join(f"{qc} = EXCLUDED.{qc}" for qc in quoted)
+    current_fields = {"hp_current", "mp_current", "san_current"}
+    update_clause = ", ".join(
+        f"{_quote(column)} = EXCLUDED.{_quote(column)}"
+        for column in _CHARACTER_COLUMNS
+        if column not in current_fields
+    )
+    update_clause += """
+        , hp_current = LEAST(COALESCE(characters.hp_current, EXCLUDED.hp_max), EXCLUDED.hp_max)
+        , mp_current = LEAST(COALESCE(characters.mp_current, EXCLUDED.mp_max), EXCLUDED.mp_max)
+        , san_current = COALESCE(characters.san_current, EXCLUDED.san_current)
+    """
     conflict = (
         "(guild_id, discord_user_id) WHERE role = 'PC'"
         if role == "PC"
@@ -323,80 +322,3 @@ async def advance_narration_position(
             line_index,
             scenario_id,
         )
-
-
-_TOKEN_TTL = timedelta(minutes=30)
-
-
-# ponytail: KPC/NPC tokens need a real scenario_id — NULL scenario_id + role
-# in ('KPC','NPC') means the character upsert's (scenario_id, name) conflict
-# target never matches, so every submission inserts a duplicate row instead
-# of upserting. Phase 3 (which issues these tokens) must always pass a real
-# scenario_id for KPC/NPC roles.
-async def create_registration_token(
-    pool: asyncpg.Pool,
-    guild_id: int,
-    user_id: int,
-    role: str = "PC",
-    scenario_id: int | None = None,
-) -> str:
-    token = secrets.token_urlsafe(24)
-    expires_at = datetime.now(timezone.utc) + _TOKEN_TTL
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO registration_tokens
-                (token, guild_id, discord_user_id, role, scenario_id, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            token,
-            guild_id,
-            user_id,
-            role,
-            scenario_id,
-            expires_at,
-        )
-    return token
-
-
-async def get_valid_registration_token(pool: asyncpg.Pool, token: str) -> dict | None:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT * FROM registration_tokens
-            WHERE token = $1 AND used_at IS NULL AND expires_at > now()
-            """,
-            token,
-        )
-    return dict(row) if row else None
-
-
-async def register_character_with_token(
-    pool: asyncpg.Pool, token: str, data: dict
-) -> bool:
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            row = await conn.fetchrow(
-                """
-                SELECT guild_id, discord_user_id, role, scenario_id
-                FROM registration_tokens
-                WHERE token = $1 AND used_at IS NULL AND expires_at > now()
-                FOR UPDATE
-                """,
-                token,
-            )
-            if row is None:
-                return False
-            await _upsert_character(
-                conn,
-                row["guild_id"],
-                row["discord_user_id"],
-                data,
-                role=row["role"],
-                scenario_id=row["scenario_id"],
-            )
-            await conn.execute(
-                "UPDATE registration_tokens SET used_at = now() WHERE token = $1",
-                token,
-            )
-    return True
