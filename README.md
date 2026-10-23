@@ -76,6 +76,8 @@ Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tre
 연다). 이어서 일곱 cog(`check`/`sanity`/`opposed`/`character`/`scenario`/
 `narration`/`action`)를 로드한 뒤 `tree.sync()`로 슬래시 커맨드를 Discord에 등록한다.
 
+세 업무의 Mermaid 흐름도와 구조 축소 이유는 [도메인 아키텍처 문서](docs/architecture/domain-workflows-and-scope.md)에 정리했다.
+
 ## 프로젝트 구조
 
 ```
@@ -107,7 +109,7 @@ CoC-Bot/
 ├── .dockerignore                 # Docker 빌드 컨텍스트 제외 목록 (.env 등 시크릿 방지)
 ├── .env.example                  # 환경변수 템플릿 (DISCORD_TOKEN, DATABASE_URL, GEMINI_API_KEY)
 ├── .gitignore                    # git 추적 제외 목록
-└── docs/superpowers/              # 설계 스펙 · 구현 계획 문서
+└── docs/architecture/             # 현재 도메인 흐름 · 구조 축소 기록
 ```
 
 파일별 상세:
@@ -119,6 +121,7 @@ CoC-Bot/
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
+| `docs/architecture/domain-workflows-and-scope.md` | 캐릭터 등록·시나리오 등록·시나리오 플레이 흐름도, 축소 결정과 검증 범위 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
 | `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 헬스체크 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL 가드) |
 | `bot/web.py` | Render 상태 확인용 `/` 및 `/health` 응답만 제공하는 aiohttp 서버. `PORT` 환경변수가 있을 때만 기동한다 |
