@@ -36,7 +36,11 @@ class IntentResult:
 
 
 def parse_intent_response(raw_json: str) -> IntentResult:
+    if not isinstance(raw_json, str):
+        raise ValueError("Gemini 응답이 비어 있습니다.")
     data = json.loads(raw_json)
+    if not isinstance(data, dict):
+        raise ValueError("Gemini 응답은 JSON 객체여야 합니다.")
 
     # Check for required fields
     required_fields = RESPONSE_SCHEMA["required"]
@@ -85,19 +89,17 @@ def build_prompt(player_input: str, scene_context: str) -> str:
     )
 
 
-def _build_model():
-    import google.generativeai as genai
+def _build_client():
+    from google import genai
 
-    return genai.GenerativeModel(
-        MODEL_NAME,
-        generation_config={
-            "response_mime_type": "application/json",
-            "response_schema": RESPONSE_SCHEMA,
-        },
-    )
+    return genai.Client()
 
 
 def analyze_intent(player_input: str, scene_context: str, model=None) -> IntentResult:
-    model = model or _build_model()
-    response = model.generate_content(build_prompt(player_input, scene_context))
+    client = model or _build_client()
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=build_prompt(player_input, scene_context),
+        config={"response_mime_type": "application/json", "response_schema": RESPONSE_SCHEMA},
+    )
     return parse_intent_response(response.text)

@@ -97,7 +97,10 @@ CoC-Bot/
 │       ├── narration.py         # /낭독시작 커맨드 + NarrationView(키퍼 전용 진행 버튼)
 │       └── action.py            # /행동 커맨드
 ├── tests/                       # bot/, dice.py, storage.py, sheet_parser.py 구조를 그대로 미러링하는 pytest 테스트
-├── requirements.txt              # 의존성 고정 (discord.py, pytest, asyncpg, openpyxl, google-generativeai, aiohttp)
+├── requirements.in               # 봇 실행 의존성 직접 목록
+├── requirements.txt              # 봇 실행 의존성 잠금 파일
+├── requirements-dev.in           # 테스트 도구를 더한 개발 의존성 목록
+├── requirements-dev.txt          # 개발 의존성 잠금 파일
 ├── pytest.ini                    # pytest 설정 (pythonpath=.)
 ├── Dockerfile                    # 컨테이너 이미지 빌드 정의
 ├── .dockerignore                 # Docker 빌드 컨텍스트 제외 목록 (.env 등 시크릿 방지)
@@ -137,7 +140,8 @@ CoC-Bot/
 | `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
 | `tests/test_scenario_parser.py` | 구글독스 HTML 아웃라인 파싱, 문장 분리(대사 보존 포함) 테스트 |
 | `tests/test_storage_registration_tokens.py` / `test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
-| `requirements.txt` | 고정 의존성: `discord.py`, `pytest`, `asyncpg`, `openpyxl`, `google-generativeai`, `aiohttp` |
+| `requirements.in` / `requirements-dev.in` | 직접 의존성 버전과 테스트 도구 목록 |
+| `requirements.txt` / `requirements-dev.txt` | 모든 하위 의존성까지 고정한 설치용 잠금 파일 |
 | `pytest.ini` | 프로젝트 루트를 `sys.path`에 추가해 `dice.py`/`bot` 임포트가 되도록 설정 |
 | `Dockerfile` | `python:3.12-slim` 베이스, 의존성 설치 후 소스 복사, `python -m bot.main`으로 기동 |
 | `.dockerignore` | 이미지 빌드 시 `.env`/`.git`/`.venv`/`tests/` 등을 제외해 시크릿 유출과 이미지 비대화를 방지 |
@@ -177,6 +181,7 @@ Neon 등 무료/저가 티어의 관리형 Postgres를 `DATABASE_URL`로 연결�
 
 ## 웹 폼 수정 시 주의사항
 
+웹 도구는 Node.js 20.19 이상 또는 22.12 이상이 필요하다.
 `web/src/` 아래를 수정했다면 반드시 다음을 실행해서 빌드 결과물을 커밋해야 한다:
 
 ```bash
@@ -188,6 +193,10 @@ cd web && npm run build
 JS/CSS를 계속 서빙한다.
 
 ## 테스트
+
+```bash
+pip install -r requirements-dev.txt
+```
 
 ```bash
 pytest -v
