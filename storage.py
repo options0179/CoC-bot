@@ -400,10 +400,3 @@ async def register_character_with_token(
                 token,
             )
     return True
-
-
-async def consume_registration_token(pool: asyncpg.Pool, token: str) -> None:
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE registration_tokens SET used_at = now() WHERE token = $1", token
-        )

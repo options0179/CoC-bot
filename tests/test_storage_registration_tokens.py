@@ -4,7 +4,6 @@ import os
 import pytest
 
 from storage import (
-    consume_registration_token,
     create_pool,
     create_registration_token,
     get_valid_registration_token,
@@ -73,27 +72,6 @@ def test_expired_token_is_not_valid(run_db):
                 "WHERE token = $1",
                 token,
             )
-        row = await get_valid_registration_token(pool, token)
-        assert row is None
-
-    run_db(_body)
-
-
-def test_consumed_token_is_no_longer_valid(run_db):
-    async def _body(pool):
-        token = await create_registration_token(pool, guild_id=1, user_id=100)
-        await consume_registration_token(pool, token)
-        row = await get_valid_registration_token(pool, token)
-        assert row is None
-
-    run_db(_body)
-
-
-def test_consuming_twice_is_harmless(run_db):
-    async def _body(pool):
-        token = await create_registration_token(pool, guild_id=1, user_id=100)
-        await consume_registration_token(pool, token)
-        await consume_registration_token(pool, token)  # 두 번째 호출도 예외 없이 통과해야 함
         row = await get_valid_registration_token(pool, token)
         assert row is None
 
