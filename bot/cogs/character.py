@@ -7,28 +7,16 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.embeds import character_embed
+from bot.google_exports import GoogleExportTooLarge, fetch_google_sheet
 from sheet_parser import parse_character_sheet
 from storage import get_character, get_scenario_by_title, upsert_character
 
-_EXPORT_URL_TEMPLATE = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
 _SHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
 
 
 def _extract_sheet_id(url: str) -> str | None:
     match = _SHEET_ID_RE.search(url)
     return match.group(1) if match else None
-
-
-async def _fetch_sheet_bytes(sheet_id: str) -> tuple[bytes | None, str | None]:
-    export_url = _EXPORT_URL_TEMPLATE.format(sheet_id=sheet_id)
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(export_url) as resp:
-                if resp.status != 200:
-                    return None, "시트를 가져올 수 없습니다. 링크 공개 설정을 확인하세요."
-                return await resp.read(), None
-    except aiohttp.ClientError as exc:
-        return None, f"시트를 가져오는 중 오류: {exc}"
 
 
 class CharacterCog(commands.Cog):
@@ -49,9 +37,18 @@ class CharacterCog(commands.Cog):
             )
             return
         await interaction.response.defer()
-        file_bytes, error = await _fetch_sheet_bytes(sheet_id)
-        if error is not None:
-            await interaction.followup.send(error, ephemeral=True)
+        try:
+            file_bytes = await fetch_google_sheet(sheet_id)
+        except GoogleExportTooLarge:
+            await interaction.followup.send("시트 파일이 10MB 제한을 초과했습니다.", ephemeral=True)
+            return
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            await interaction.followup.send(f"시트를 가져오는 중 오류: {exc}", ephemeral=True)
+            return
+        if file_bytes is None:
+            await interaction.followup.send(
+                "시트를 가져올 수 없습니다. 링크 공개 설정을 확인하세요.", ephemeral=True
+            )
             return
         try:
             data = await asyncio.to_thread(parse_character_sheet, file_bytes)
@@ -117,9 +114,18 @@ class CharacterCog(commands.Cog):
             )
             return
         await interaction.response.defer()
-        file_bytes, error = await _fetch_sheet_bytes(sheet_id)
-        if error is not None:
-            await interaction.followup.send(error, ephemeral=True)
+        try:
+            file_bytes = await fetch_google_sheet(sheet_id)
+        except GoogleExportTooLarge:
+            await interaction.followup.send("시트 파일이 10MB 제한을 초과했습니다.", ephemeral=True)
+            return
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            await interaction.followup.send(f"시트를 가져오는 중 오류: {exc}", ephemeral=True)
+            return
+        if file_bytes is None:
+            await interaction.followup.send(
+                "시트를 가져올 수 없습니다. 링크 공개 설정을 확인하세요.", ephemeral=True
+            )
             return
         try:
             data = await asyncio.to_thread(parse_character_sheet, file_bytes)

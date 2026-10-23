@@ -21,30 +21,6 @@ def _make_bot():
     return bot
 
 
-class _FakeResponse:
-    status = 200
-
-    async def read(self):
-        return b"fake-bytes"
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-class _FakeSession:
-    def get(self, url):
-        return _FakeResponse()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
 def test_extract_sheet_id_from_share_link():
     assert _extract_sheet_id(_SHEET_URL) == "abc123"
 
@@ -66,7 +42,7 @@ def test_register_rejected_for_non_sheet_link(monkeypatch):
 
 
 def test_register_parses_and_stores_on_success(monkeypatch):
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
+    monkeypatch.setattr("bot.cogs.character.fetch_google_sheet", AsyncMock(return_value=b"fake-bytes"))
     monkeypatch.setattr(
         "bot.cogs.character.parse_character_sheet",
         lambda file_bytes: {"name": "탐사자", "skills": {}},
@@ -84,14 +60,7 @@ def test_register_parses_and_stores_on_success(monkeypatch):
 
 
 def test_register_reports_fetch_error(monkeypatch):
-    class _FailingResponse(_FakeResponse):
-        status = 404
-
-    class _FailingSession(_FakeSession):
-        def get(self, url):
-            return _FailingResponse()
-
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FailingSession())
+    monkeypatch.setattr("bot.cogs.character.fetch_google_sheet", AsyncMock(return_value=None))
     cog = CharacterCog(bot=_make_bot())
     interaction = _make_interaction()
 
@@ -103,7 +72,7 @@ def test_register_reports_fetch_error(monkeypatch):
 
 
 def test_register_reports_parse_error(monkeypatch):
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
+    monkeypatch.setattr("bot.cogs.character.fetch_google_sheet", AsyncMock(return_value=b"fake-bytes"))
 
     def _raise(file_bytes):
         raise ValueError("'이름' 항목을 시트에서 찾을 수 없습니다.")
@@ -215,7 +184,7 @@ def test_register_scenario_character_rejects_non_sheet_link(monkeypatch):
 
 
 def test_register_scenario_character_stores_npc_for_keeper(monkeypatch):
-    monkeypatch.setattr("bot.cogs.character.aiohttp.ClientSession", lambda: _FakeSession())
+    monkeypatch.setattr("bot.cogs.character.fetch_google_sheet", AsyncMock(return_value=b"fake-bytes"))
     monkeypatch.setattr(
         "bot.cogs.character.get_scenario_by_title",
         AsyncMock(return_value={"id": 7, "keeper_user_id": 100}),

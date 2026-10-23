@@ -40,32 +40,8 @@ def test_register_rejects_non_google_docs_link(monkeypatch):
     )
 
 
-class _FakeResponse:
-    status = 200
-
-    async def text(self):
-        return "<html></html>"
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-class _FakeSession:
-    def get(self, url):
-        return _FakeResponse()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
 def test_register_parses_and_stores_on_success(monkeypatch):
-    monkeypatch.setattr("bot.cogs.scenario.aiohttp.ClientSession", lambda: _FakeSession())
+    monkeypatch.setattr("bot.cogs.scenario.fetch_google_doc", AsyncMock(return_value="<html></html>"))
     monkeypatch.setattr(
         "bot.cogs.scenario.parse_scenario_html",
         lambda html: [{"part": "제1부", "scene": "장면 1", "lines": ["문장1"]}],
@@ -87,7 +63,7 @@ def test_register_parses_and_stores_on_success(monkeypatch):
 
 
 def test_register_reports_when_no_narration_found(monkeypatch):
-    monkeypatch.setattr("bot.cogs.scenario.aiohttp.ClientSession", lambda: _FakeSession())
+    monkeypatch.setattr("bot.cogs.scenario.fetch_google_doc", AsyncMock(return_value="<html></html>"))
     monkeypatch.setattr("bot.cogs.scenario.parse_scenario_html", lambda html: [])
     cog = ScenarioCog(bot=_make_bot())
     interaction = _make_interaction()

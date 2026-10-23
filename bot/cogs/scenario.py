@@ -7,6 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.embeds import scenario_embed
+from bot.google_exports import GoogleExportTooLarge, fetch_google_doc
 from scenario_parser import parse_scenario_html
 from storage import (
     bind_scenario_channel,
@@ -18,7 +19,6 @@ from storage import (
     join_scenario,
 )
 
-_EXPORT_URL_TEMPLATE = "https://docs.google.com/document/d/{doc_id}/export?format=html"
 _DOC_ID_RE = re.compile(r"/document/d/([a-zA-Z0-9_-]+)")
 
 
@@ -45,19 +45,18 @@ class ScenarioCog(commands.Cog):
             )
             return
         await interaction.response.defer()
-        export_url = _EXPORT_URL_TEMPLATE.format(doc_id=doc_id)
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(export_url) as resp:
-                    if resp.status != 200:
-                        await interaction.followup.send(
-                            "문서를 가져올 수 없습니다. 링크 공개 설정을 확인하세요.",
-                            ephemeral=True,
-                        )
-                        return
-                    html = await resp.text()
-        except aiohttp.ClientError as exc:
+            html = await fetch_google_doc(doc_id)
+        except GoogleExportTooLarge:
+            await interaction.followup.send("문서가 5MB 제한을 초과했습니다.", ephemeral=True)
+            return
+        except (aiohttp.ClientError, TimeoutError) as exc:
             await interaction.followup.send(f"문서를 가져오는 중 오류: {exc}", ephemeral=True)
+            return
+        if html is None:
+            await interaction.followup.send(
+                "문서를 가져올 수 없습니다. 링크 공개 설정을 확인하세요.", ephemeral=True
+            )
             return
         structure = parse_scenario_html(html)
         if not structure:
