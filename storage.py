@@ -300,6 +300,19 @@ async def get_roster(pool: asyncpg.Pool, scenario_id: int) -> list[dict]:
     return results
 
 
+async def join_scenario(pool: asyncpg.Pool, scenario_id: int, character_id: int) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO scenario_participants (scenario_id, character_id)
+            SELECT $1, id FROM characters WHERE id = $2 AND role = 'PC'
+            ON CONFLICT DO NOTHING
+            """,
+            scenario_id,
+            character_id,
+        )
+
+
 async def advance_narration_position(
     pool: asyncpg.Pool, scenario_id: int, scene_index: int, line_index: int
 ) -> None:

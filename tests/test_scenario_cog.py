@@ -154,6 +154,49 @@ def test_start_reports_when_channel_taken(monkeypatch):
     )
 
 
+def test_join_adds_registered_pc_to_channel_scenario(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_scenario_by_channel",
+        AsyncMock(return_value={"id": 7}),
+    )
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_pc_character",
+        AsyncMock(return_value={"id": 42, "name": "탐사자"}),
+    )
+    join_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.scenario.join_scenario", join_mock)
+    cog = ScenarioCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.join.callback(cog, interaction))
+
+    join_mock.assert_awaited_once_with(cog.pool, 7, 42)
+    interaction.response.send_message.assert_awaited_once_with(
+        "탐사자가 시나리오에 참가했습니다."
+    )
+
+
+def test_join_rejects_unregistered_pc(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_scenario_by_channel",
+        AsyncMock(return_value={"id": 7}),
+    )
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_pc_character", AsyncMock(return_value=None)
+    )
+    join_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.scenario.join_scenario", join_mock)
+    cog = ScenarioCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.join.callback(cog, interaction))
+
+    join_mock.assert_not_awaited()
+    interaction.response.send_message.assert_awaited_once_with(
+        "등록된 PC 캐릭터가 없습니다.", ephemeral=True
+    )
+
+
 def test_info_reports_when_channel_unbound(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.scenario.get_scenario_by_channel", AsyncMock(return_value=None)

@@ -9,6 +9,8 @@ from storage import (
     get_roster,
     get_scenario_by_channel,
     get_scenario_by_title,
+    join_scenario,
+    upsert_character,
 )
 
 TEST_DSN = os.environ.get("TEST_DATABASE_URL")
@@ -130,5 +132,26 @@ def test_get_roster_empty_when_no_participants(run_db):
             pool, guild_id=1, title="시나리오", keeper_user_id=1, doc_url="https://x", structure=[]
         )
         assert await get_roster(pool, scenario_id) == []
+
+    run_db(_body)
+
+
+def test_join_scenario_adds_pc_to_roster_idempotently(run_db):
+    async def _body(pool):
+        scenario_id = await create_scenario(
+            pool, guild_id=1, title="참여", keeper_user_id=1, doc_url="https://x", structure=[]
+        )
+        await upsert_character(
+            pool, guild_id=1, user_id=100, data={"name": "탐사자", "skills": {"회계": 40}}
+        )
+        async with pool.acquire() as conn:
+            pc = await conn.fetchrow(
+                "SELECT id FROM characters WHERE guild_id = $1 AND discord_user_id = $2 AND role = 'PC'",
+                1,
+                100,
+            )
+        await join_scenario(pool, scenario_id, pc["id"])
+        await join_scenario(pool, scenario_id, pc["id"])
+        assert [c["name"] for c in await get_roster(pool, scenario_id)] == ["탐사자"]
 
     run_db(_body)

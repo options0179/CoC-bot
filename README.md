@@ -17,6 +17,7 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 - `/시나리오등록 제목 링크:<구글독스 URL>` — 링크 공개된 구글독스 시나리오 문서를 가져와
   아웃라인(부/장면/Keeper 낭독)을 파싱해 등록한다
 - `/시나리오시작 시나리오` — 현재 채널을 등록된 시나리오에 배정한다(그 시나리오의 키퍼만 가능)
+- `/시나리오참가` — 본인의 PC를 현재 채널에 배정된 시나리오의 참가자로 등록한다
 - `/시나리오조회` — 현재 채널에 배정된 시나리오의 진행 상황과 참가자를 보여준다
 - `/시나리오캐릭터등록 시나리오 직책:<KPC|NPC> 링크:<구글 스프레드시트 URL>` — 그 시나리오의
   키퍼만 KPC/NPC 캐릭터시트를 등록할 수 있다(PC와 같은 양식)
@@ -122,7 +123,7 @@ CoC-Bot/
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
 | `bot/cogs/opposed.py` | `/대립` 슬래시 커맨드 |
 | `bot/cogs/character.py` | 구글 스프레드시트 링크로 PC 등록(`defer()` 후 `aiohttp`로 xlsx export fetch → `asyncio.to_thread`로 파싱), 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능) |
-| `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오조회` |
+| `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오참가`(본인 PC를 로스터에 추가), `/시나리오조회` |
 | `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, `NarrationView`(키퍼가 "다음" 버튼을 누르면 진행, `PushView`와 같은 메모리 상태 패턴) |
 | `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 분석해 판정이 필요 없으면 서술 임베드를, 필요하면 캐릭터 스킬값을 조회해 `dice.roll_check()`로 판정한다 |
 | `tests/test_dice_check.py` | 기본 판정·성공등급·보너스/페널티 로직 테스트, `FakeRng` 결정론적 난수 테스트 헬퍼 |
