@@ -4,7 +4,7 @@ from pathlib import Path
 from aiohttp import web
 
 from sheet_parser import SKILL_NAMES
-from storage import consume_registration_token, get_valid_registration_token, upsert_character
+from storage import get_valid_registration_token, register_character_with_token
 
 POOL_KEY: web.AppKey = web.AppKey("pool")
 
@@ -37,15 +37,9 @@ async def _get_registration_status(request: web.Request) -> web.Response:
 async def _submit_registration(request: web.Request) -> web.Response:
     token = request.match_info["token"]
     pool = request.app[POOL_KEY]
-    token_row = await get_valid_registration_token(pool, token)
-    if token_row is None:
-        return web.json_response(
-            {"ok": False, "error": "링크가 만료되었거나 이미 사용되었습니다."}, status=404
-        )
-
     try:
         payload = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError, web.HTTPBadRequest):
         return web.json_response(
             {"ok": False, "error": "요청 형식이 올바르지 않습니다."}, status=400
         )
@@ -56,16 +50,32 @@ async def _submit_registration(request: web.Request) -> web.Response:
         )
 
     name = payload.get("name")
-    if not name or not str(name).strip():
+    if not isinstance(name, str) or not name.strip():
         return web.json_response({"ok": False, "error": "이름을 입력해주세요."}, status=400)
-    payload["name"] = str(name).strip()
+    if len(name.strip()) > 100:
+        return web.json_response({"ok": False, "error": "이름은 100자 이하여야 합니다."}, status=400)
 
-    data = {field: payload.get(field) for field in _TEXT_FIELDS}
+    data = {"name": name.strip()}
+    for field in _TEXT_FIELDS[1:]:
+        value = payload.get(field, "")
+        if value is None:
+            value = ""
+        if not isinstance(value, str) or len(value) > 500:
+            return web.json_response(
+                {"ok": False, "error": f"{field}은(는) 500자 이하의 문자열이어야 합니다."},
+                status=400,
+            )
+        data[field] = value.strip()
+
     for field in _INT_FIELDS:
         value = payload.get(field)
         if value is None or value == "":
             data[field] = None
             continue
+        if isinstance(value, bool):
+            return web.json_response(
+                {"ok": False, "error": f"{field}은(는) 숫자여야 합니다."}, status=400
+            )
         try:
             data[field] = int(value)
         except (TypeError, ValueError):
@@ -77,25 +87,26 @@ async def _submit_registration(request: web.Request) -> web.Response:
                 {"ok": False, "error": f"{field}은(는) 0에서 999 사이의 값이어야 합니다."},
                 status=400,
             )
-    skills = payload.get("skills") or {}
-    if not isinstance(skills, dict) or not all(isinstance(v, int) for v in skills.values()):
+    skills = payload.get("skills", {})
+    if not isinstance(skills, dict) or not all(
+        isinstance(name, str)
+        and name.strip()
+        and type(value) is int
+        and 0 <= value <= 999
+        for name, value in skills.items()
+    ):
         return web.json_response({"ok": False, "error": "기능 값은 숫자여야 합니다."}, status=400)
-    data["skills"] = skills
+    data["skills"] = {name.strip(): value for name, value in skills.items()}
 
-    await upsert_character(
-        pool,
-        token_row["guild_id"],
-        token_row["discord_user_id"],
-        data,
-        role=token_row["role"],
-        scenario_id=token_row["scenario_id"],
-    )
-    await consume_registration_token(pool, token)
+    if not await register_character_with_token(pool, token, data):
+        return web.json_response(
+            {"ok": False, "error": "링크가 만료되었거나 이미 사용되었습니다."}, status=404
+        )
     return web.json_response({"ok": True, "name": data["name"]})
 
 
 def create_app(pool) -> web.Application:
-    app = web.Application()
+    app = web.Application(client_max_size=64 * 1024)
     app[POOL_KEY] = pool
     app.router.add_get("/", _health)
     app.router.add_get("/health", _health)

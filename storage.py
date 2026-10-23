@@ -100,8 +100,8 @@ def _quote(column: str) -> str:
     return f'"{column}"' if column == "int" else column
 
 
-async def upsert_character(
-    pool: asyncpg.Pool,
+async def _upsert_character(
+    conn: asyncpg.Connection,
     guild_id: int,
     user_id: int,
     data: dict,
@@ -126,8 +126,19 @@ async def upsert_character(
         ON CONFLICT {conflict}
         DO UPDATE SET {update_clause}, updated_at = now()
     """
+    await conn.execute(query, guild_id, user_id, role, scenario_id, *values)
+
+
+async def upsert_character(
+    pool: asyncpg.Pool,
+    guild_id: int,
+    user_id: int,
+    data: dict,
+    role: str = "PC",
+    scenario_id: int | None = None,
+) -> None:
     async with pool.acquire() as conn:
-        await conn.execute(query, guild_id, user_id, role, scenario_id, *values)
+        await _upsert_character(conn, guild_id, user_id, data, role, scenario_id)
 
 
 def _row_to_character(row) -> dict | None:
@@ -324,6 +335,37 @@ async def get_valid_registration_token(pool: asyncpg.Pool, token: str) -> dict |
             token,
         )
     return dict(row) if row else None
+
+
+async def register_character_with_token(
+    pool: asyncpg.Pool, token: str, data: dict
+) -> bool:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                SELECT guild_id, discord_user_id, role, scenario_id
+                FROM registration_tokens
+                WHERE token = $1 AND used_at IS NULL AND expires_at > now()
+                FOR UPDATE
+                """,
+                token,
+            )
+            if row is None:
+                return False
+            await _upsert_character(
+                conn,
+                row["guild_id"],
+                row["discord_user_id"],
+                data,
+                role=row["role"],
+                scenario_id=row["scenario_id"],
+            )
+            await conn.execute(
+                "UPDATE registration_tokens SET used_at = now() WHERE token = $1",
+                token,
+            )
+    return True
 
 
 async def consume_registration_token(pool: asyncpg.Pool, token: str) -> None:
