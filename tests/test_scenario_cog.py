@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock
 
 from bot.cogs.scenario import ScenarioCog, _extract_doc_id
@@ -40,12 +41,33 @@ def test_register_rejects_non_google_docs_link(monkeypatch):
     )
 
 
+def test_register_rejects_blank_title_before_fetch(monkeypatch):
+    fetch_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.scenario.fetch_google_doc", fetch_mock)
+    cog = ScenarioCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(
+        cog.register.callback(
+            cog, interaction, "  ", "https://docs.google.com/document/d/abc123/edit"
+        )
+    )
+
+    fetch_mock.assert_not_awaited()
+    interaction.response.send_message.assert_awaited_once_with(
+        "시나리오 제목을 입력해주세요.", ephemeral=True
+    )
+
+
 def test_register_parses_and_stores_on_success(monkeypatch):
     monkeypatch.setattr("bot.cogs.scenario.fetch_google_doc", AsyncMock(return_value="<html></html>"))
-    monkeypatch.setattr(
-        "bot.cogs.scenario.parse_scenario_html",
-        lambda html: [{"part": "제1부", "scene": "장면 1", "lines": ["문장1"]}],
-    )
+    parse_threads = []
+
+    def parse(html):
+        parse_threads.append(threading.get_ident())
+        return [{"part": "제1부", "scene": "장면 1", "lines": ["문장1"]}]
+
+    monkeypatch.setattr("bot.cogs.scenario.parse_scenario_html", parse)
     create_mock = AsyncMock(return_value=1)
     monkeypatch.setattr("bot.cogs.scenario.create_scenario", create_mock)
     cog = ScenarioCog(bot=_make_bot())
@@ -53,12 +75,14 @@ def test_register_parses_and_stores_on_success(monkeypatch):
 
     asyncio.run(
         cog.register.callback(
-            cog, interaction, "마지막 상영", "https://docs.google.com/document/d/abc123/edit"
+            cog, interaction, " 마지막 상영 ", "https://docs.google.com/document/d/abc123/edit"
         )
     )
 
     interaction.response.defer.assert_awaited_once()
     create_mock.assert_awaited_once()
+    assert create_mock.await_args.args[2] == "마지막 상영"
+    assert parse_threads[0] != threading.get_ident()
     interaction.followup.send.assert_awaited_once_with("'마지막 상영' 시나리오를 등록했습니다. (장면 1개)")
 
 

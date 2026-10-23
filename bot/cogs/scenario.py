@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 import aiohttp
@@ -38,6 +39,12 @@ class ScenarioCog(commands.Cog):
     )
     @app_commands.guild_only()
     async def register(self, interaction: discord.Interaction, 제목: str, 링크: str) -> None:
+        title = 제목.strip()
+        if not title:
+            await interaction.response.send_message(
+                "시나리오 제목을 입력해주세요.", ephemeral=True
+            )
+            return
         doc_id = _extract_doc_id(링크)
         if doc_id is None:
             await interaction.response.send_message(
@@ -58,7 +65,7 @@ class ScenarioCog(commands.Cog):
                 "문서를 가져올 수 없습니다. 링크 공개 설정을 확인하세요.", ephemeral=True
             )
             return
-        structure = parse_scenario_html(html)
+        structure = await asyncio.to_thread(parse_scenario_html, html)
         if not structure:
             await interaction.followup.send(
                 "문서에서 Keeper 낭독 구간을 찾지 못했습니다.", ephemeral=True
@@ -66,14 +73,14 @@ class ScenarioCog(commands.Cog):
             return
         try:
             await create_scenario(
-                self.pool, interaction.guild_id, 제목, interaction.user.id, 링크, structure
+                self.pool, interaction.guild_id, title, interaction.user.id, 링크, structure
             )
         except UniqueViolationError:
             await interaction.followup.send(
-                f"이미 '{제목}' 이름의 시나리오가 등록돼 있습니다.", ephemeral=True
+                f"이미 '{title}' 이름의 시나리오가 등록돼 있습니다.", ephemeral=True
             )
             return
-        await interaction.followup.send(f"'{제목}' 시나리오를 등록했습니다. (장면 {len(structure)}개)")
+        await interaction.followup.send(f"'{title}' 시나리오를 등록했습니다. (장면 {len(structure)}개)")
 
     @app_commands.command(name="시나리오시작", description="현재 채널을 시나리오에 배정합니다.")
     @app_commands.describe(시나리오="등록된 시나리오 이름")
