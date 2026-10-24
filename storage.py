@@ -143,9 +143,13 @@ async def create_pool(path: str) -> SQLitePool:
         isolation_level=None,
     )
     connection.row_factory = sqlite3.Row
-    await asyncio.to_thread(connection.execute, "PRAGMA foreign_keys = ON")
-    await asyncio.to_thread(connection.execute, "PRAGMA busy_timeout = 30000")
-    await asyncio.to_thread(connection.execute, "PRAGMA journal_mode = WAL")
+    for pragma in (
+        "PRAGMA foreign_keys = ON",
+        "PRAGMA busy_timeout = 30000",
+        "PRAGMA journal_mode = WAL",
+    ):
+        cursor = await asyncio.to_thread(connection.execute, pragma)
+        await asyncio.to_thread(cursor.close)
     await asyncio.to_thread(connection.executescript, SCHEMA_SQL)
     return SQLitePool(connection)
 
