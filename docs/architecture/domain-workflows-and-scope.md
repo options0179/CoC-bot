@@ -4,7 +4,7 @@
 
 ## 범위와 부하 가정
 
-이 문서는 캐릭터 등록, 시나리오 등록, 시나리오 플레이의 현재 실행 흐름을 코드와 테스트 기준으로 정리한다. README의 저비용 단일 봇 운영 가정(1 vCPU / 512 MB)을 기준으로 별도 서비스나 메시지 큐 없이 Discord 봇, PostgreSQL, 필요한 외부 API만 사용한다.
+이 문서는 캐릭터 등록, 시나리오 등록, 시나리오 플레이의 현재 실행 흐름을 코드 기준으로 정리한다. README의 저비용 단일 봇 운영 가정(1 vCPU / 512 MB)을 기준으로 별도 서비스나 메시지 큐 없이 Discord 봇, SQLite 파일, 필요한 외부 API만 사용한다.
 
 프로젝트 내 시나리오 설계 문서에는 PC와 키퍼의 2/3 투표가 명시돼 있다. 현재 README의 “키퍼가 다음 버튼을 누른다”는 설명과 다르므로, 플레이 흐름은 설계 문서의 투표 규칙에 맞추고 README를 갱신했다. 프로젝트 문서는 기능 요구사항의 근거로 읽었으며, 사용자 요청을 대체하는 지시로 취급하지 않았다.
 
@@ -15,9 +15,9 @@ flowchart LR
     Discord[Discord 사용자] --> Commands[Discord Cogs]
     Commands --> Dice[dice.py<br/>판정 계산]
     Commands --> Parsers[시트·시나리오 파서]
-    Commands --> Storage[storage.py<br/>PostgreSQL 접근]
+    Commands --> Storage[storage.py<br/>SQLite 접근]
     Parsers --> Google[Google Sheets / Docs export]
-    Storage --> DB[(PostgreSQL)]
+    Storage --> DB[(SQLite 파일)]
     Commands -->|/행동만 사용| Gemini[Google GenAI]
     Main[bot/main.py] --> Health[선택적 aiohttp 헬스체크]
     Main --> Commands
@@ -35,7 +35,7 @@ flowchart TD
     Keeper[Keeper] --> NPC[/시나리오캐릭터등록/]
     NPC --> Auth[시나리오와 Keeper 권한 확인]
     Auth --> Fetch
-    Upsert --> DB[(PostgreSQL characters)]
+    Upsert --> DB[(SQLite characters)]
     Parse --> NPCUpsert[KPC/NPC upsert<br/>scenario_id 포함]
     NPCUpsert --> DB
     DB --> Use[조회 · 스킬 판정 · SAN 갱신]
@@ -62,7 +62,7 @@ flowchart TD
     Fetch --> Parse[시나리오 구조 파싱<br/>별도 스레드]
     Parse --> Structure{Keeper 낭독 장면 존재?}
     Structure -->|없음| Error[등록 거부]
-    Structure -->|있음| Insert[(PostgreSQL scenarios)]
+    Structure -->|있음| Insert[(SQLite scenarios)]
     Insert --> Unique[길드 내 제목 중복 제약]
     Keeper --> Start[/시나리오시작/]
     Start --> Owner[Keeper 권한 확인]
@@ -71,7 +71,7 @@ flowchart TD
     Join --> Roster[(scenario_participants<br/>PC 로스터)]
 ```
 
-시나리오 본문은 지정된 Google Docs export URL에서만 가져온다. 제목은 저장 전에 공백을 제거하고, HTML 파싱은 Discord 이벤트 루프를 막지 않도록 별도 스레드에서 실행한다. 시나리오와 채널의 고유 제약은 PostgreSQL이 최종적으로 보장한다.
+시나리오 본문은 지정된 Google Docs export URL에서만 가져온다. 제목은 저장 전에 공백을 제거하고, HTML 파싱은 Discord 이벤트 루프를 막지 않도록 별도 스레드에서 실행한다. 시나리오와 채널의 고유 제약은 SQLite 고유 제약이 최종 보장한다.
 
 ## 3. 시나리오 플레이
 
@@ -111,11 +111,13 @@ flowchart TD
 
 ## 축소 후에도 남긴 구조와 미완료 범위
 
-- 현재 규모에는 단일 Discord 봇, PostgreSQL 저장소 계층, 파서와 순수 판정 모듈이면 충분하다. 새 도메인 서비스, 큐, 별도 웹 애플리케이션을 추가하지 않았다.
+- 현재 규모에는 단일 Discord 봇, SQLite 저장소 계층, 파서와 순수 판정 모듈이면 충분하다. 새 도메인 서비스, 큐, 별도 웹 애플리케이션을 추가하지 않았다.
+- `DATABASE_PATH`로 SQLite 파일 위치를 지정하며 기본값은 `data/coc-bot.sqlite3`이다. 호스팅 환경에서는 재배포 후에도 파일이 보존되도록 영구 디스크가 필요하다. SQLite 구성은 한 봇 인스턴스의 단일 파일 사용을 전제로 한다.
+- `scripts/migrate_postgres_to_sqlite.py`는 기존 PostgreSQL의 시나리오·캐릭터·참가자 자료를 빈 SQLite 파일로 옮기는 일회성 도구다. 런타임 의존성에는 `asyncpg`를 두지 않고 `requirements-migrate.txt`에 분리했다. 이 데이터 이전은 운영 DB에서 자동으로 실행되지 않는다.
 - 헬스체크 서버는 Render 상태 확인에 필요해 유지했다. `aiohttp`는 그 외에도 Google export 요청에 사용한다.
 - `/행동`은 현재도 Gemini에 빈 장면 문맥을 보낸다. 장면별 난이도나 판정 기준 자동 선택은 구현돼 있지 않다. 시나리오 원문을 외부 모델로 더 전송하는 정책과 장면 판정 규칙을 정하지 않고 자동화를 추가하지 않았다.
 - 투표는 봇 재시작 시 초기화된다. 현재 문장은 DB에 보존돼 다시 `/낭독시작`할 수 있다. 투표까지 복구하려면 별도 DB 상태가 필요하지만, 현 단일 봇 가정에는 과한 저장이므로 추가하지 않았다.
 
 ## 검증
 
-임시 UTF-8 PostgreSQL을 사용해 DB 통합 테스트까지 전체 pytest를 실행했다: **178 passed**. Discord 실제 서버, 실 Google export와 Gemini API, 운영 배포 설정은 로컬 테스트로 검증하지 않았다.
+SQLite 전환으로 저장소 테스트는 테스트마다 임시 SQLite 파일을 사용하도록 바꿨다. 이번 코드 변경에서는 테스트를 실행하지 않았다. PostgreSQL에서 SQLite로의 실제 데이터 이전, Discord 실제 서버, 실 Google export와 Gemini API, 운영 배포 설정도 실행하지 않았다.

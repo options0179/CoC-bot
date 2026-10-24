@@ -1,0 +1,2 @@
+# 일회성 PostgreSQL → SQLite 데이터 이전 도구용 의존성 (봇 실행에는 필요 없음)
+asyncpg==0.32.0

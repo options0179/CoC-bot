@@ -23,7 +23,9 @@ class CoCBot(commands.Bot):
         self._web_runner: web.AppRunner | None = None
 
     async def setup_hook(self) -> None:
-        self.pool = await storage.create_pool(os.environ["DATABASE_URL"])
+        self.pool = await storage.create_pool(
+            os.environ.get("DATABASE_PATH", "data/coc-bot.sqlite3")
+        )
         # Bind the port before Discord setup (extension loads, tree.sync) so
         # Render's health check succeeds even if Discord-side startup is slow.
         await self._start_web_server()
@@ -87,8 +89,6 @@ def main() -> None:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         raise SystemExit("DISCORD_TOKEN 환경변수가 설정되지 않았습니다.")
-    if not os.environ.get("DATABASE_URL"):
-        raise SystemExit("DATABASE_URL 환경변수가 설정되지 않았습니다.")
     bot.run(token)
 
 

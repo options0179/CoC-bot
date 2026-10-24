@@ -26,10 +26,6 @@ anyio==4.15.1
     #   -c requirements.txt
     #   google-genai
     #   httpx
-asyncpg==0.32.0
-    # via
-    #   -c requirements.txt
-    #   -r requirements.in
 attrs==26.1.0
     # via
     #   -c requirements.txt

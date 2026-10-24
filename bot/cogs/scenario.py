@@ -1,9 +1,9 @@
 import asyncio
 import re
+import sqlite3
 
 import aiohttp
 import discord
-from asyncpg import UniqueViolationError
 from discord import app_commands
 from discord.ext import commands
 
@@ -75,7 +75,7 @@ class ScenarioCog(commands.Cog):
             await create_scenario(
                 self.pool, interaction.guild_id, title, interaction.user.id, 링크, structure
             )
-        except UniqueViolationError:
+        except sqlite3.IntegrityError:
             await interaction.followup.send(
                 f"이미 '{title}' 이름의 시나리오가 등록돼 있습니다.", ephemeral=True
             )

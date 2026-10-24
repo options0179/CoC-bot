@@ -3,7 +3,7 @@
 Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)을 자동화하는
 디스코드 슬래시 커맨드 봇. 판정 명령어 자체는 여전히 상태 없이(stateless) 그 자리에서
 계산만 하지만, 이제 캐릭터시트 등록/조회 기능도 지원한다 — 플레이어가 구글 스프레드시트
-링크로 캐릭터시트를 등록하면 Postgres에 저장해두고 언제든 다시 조회할 수 있다.
+링크로 캐릭터시트를 등록하면 SQLite 파일에 저장해두고 언제든 다시 조회할 수 있다.
 
 ## 커맨드
 
@@ -31,12 +31,10 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 저장하지 않는다. 스킬값을 커맨드 인자로 받아 그 자리에서 계산하고 결과만 응답한다.
 `/산정`은 예외로, 손실식만 인자로 받고 현재 SAN은 DB의 등록된 PC 캐릭터에서 자동으로
 읽고 갱신한다(등록된 PC가 없으면 거부). 캐릭터시트 등록 기능(`/캐릭터등록`,
-`/캐릭터조회`)은 사용자의 등록된 캐릭터를 Postgres에
+`/캐릭터조회`)은 사용자의 등록된 캐릭터를 SQLite에
 저장하고 조회하며, 등록 시 HP/MP/SAN 최대치·시작치도 함께 계산해 저장한다.
-`CoCBot.setup_hook()`이 cog를 로드하기 전에 DB 커넥션 풀부터
-만들기 때문에, 판정 명령어만 쓰더라도 Postgres 연결은 봇을 기동하는 데 필수다 —
-`DATABASE_URL`이 없거나 접속에 실패하면 `/판정`, `/산정`, `/대립`을 포함해 봇 전체가
-뜨지 않는다. 관리형 Postgres(Railway, Supabase 등)를 `DATABASE_URL`로 연결해서 쓰면 된다.
+`CoCBot.setup_hook()`은 기본 경로 `data/coc-bot.sqlite3`에 SQLite 파일을 만들거나
+기존 파일을 열고 스키마를 준비한다. 다른 위치를 쓰려면 `DATABASE_PATH`에 파일 경로를 지정한다.
 
 **3개 계층으로 분리:**
 
@@ -57,7 +55,7 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 `embeds.check_embed()`로 임베드에 담음 → 판정이 실패/펌블이면 재도전용
 `PushView`(버튼)를 함께 첨부 → 완성된 메시지를 응답으로 보낸다.
 
-**게임 상태 저장.** HP/MP/SAN 및 시나리오 낭독 위치는 Postgres에 저장한다. 낭독 투표는
+**게임 상태 저장.** HP/MP/SAN 및 시나리오 낭독 위치는 SQLite 파일에 저장한다. 낭독 투표는
 메시지별 `NarrationView` 메모리에서만 집계되며, 봇이 재시작되면 투표는 초기화되고
 저장된 현재 문장에서 다시 시작한다. `/판정`의 `PushView`도 메모리에만 5분간 유지되며,
 재시작되면 버튼은 사라진다.
@@ -67,10 +65,11 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 잡아 한국어 메시지로 사용자에게만 보이게(ephemeral) 응답한다. 각 cog는 이런
 입력 검증 오류를 직접 처리하지 않고 이 전역 핸들러에 위임한다.
 
-**봇 기동.** `bot/main.py`의 `main()`은 `DISCORD_TOKEN`과 `DATABASE_URL`이 없으면 기동을
-중단한다. Gemini 키는 `/행동`에서만 필요하므로 없더라도 다른 명령은 계속 쓸 수 있다.
+**봇 기동.** `bot/main.py`의 `main()`은 `DISCORD_TOKEN`이 없으면 기동을 중단한다.
+`DATABASE_PATH`는 선택사항이며 기본 파일 경로를 사용한다. Gemini 키는 `/행동`에서만
+필요하므로 없더라도 다른 명령은 계속 쓸 수 있다.
 연결되면 `CoCBot.setup_hook()`이
-가장 먼저 `storage.create_pool()`로 Postgres 커넥션 풀을 만들고(스키마도 이때
+가장 먼저 `storage.create_pool()`로 SQLite 파일을 열고(스키마도 이때
 생성/확인한다), 곧바로 `bot/web.py`의 aiohttp 헬스체크 서버를 기동한다(Render의 헬스체크가
 Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tree.sync()`보다 먼저 포트를
 연다). 이어서 일곱 cog(`check`/`sanity`/`opposed`/`character`/`scenario`/
@@ -83,7 +82,7 @@ Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tre
 ```
 CoC-Bot/
 ├── dice.py                      # CoC 7판 판정 로직 전체 (discord 비의존 순수 함수)
-├── storage.py                    # Postgres 스키마 생성 + 캐릭터/시나리오 CRUD (asyncpg)
+├── storage.py                    # SQLite 스키마 생성 + 캐릭터/시나리오 CRUD (표준 sqlite3)
 ├── sheet_parser.py                # xlsx 캐릭터시트 파싱 (openpyxl)
 ├── scenario_parser.py             # 구글독스 export?format=html → 부/장면/Keeper 낭독 파싱 (표준 라이브러리 html.parser)
 ├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
@@ -104,10 +103,12 @@ CoC-Bot/
 ├── requirements.txt              # 봇 실행 의존성 잠금 파일
 ├── requirements-dev.in           # 테스트 도구를 더한 개발 의존성 목록
 ├── requirements-dev.txt          # 개발 의존성 잠금 파일
+├── requirements-migrate.txt      # 일회성 PostgreSQL 데이터 이전 도구 의존성
+├── scripts/migrate_postgres_to_sqlite.py # PostgreSQL에서 빈 SQLite 파일로 자료 이전
 ├── pytest.ini                    # pytest 설정 (pythonpath=.)
 ├── Dockerfile                    # 컨테이너 이미지 빌드 정의
 ├── .dockerignore                 # Docker 빌드 컨텍스트 제외 목록 (.env 등 시크릿 방지)
-├── .env.example                  # 환경변수 템플릿 (DISCORD_TOKEN, DATABASE_URL, GEMINI_API_KEY)
+├── .env.example                  # 환경변수 템플릿 (DISCORD_TOKEN, DATABASE_PATH, GEMINI_API_KEY)
 ├── .gitignore                    # git 추적 제외 목록
 └── docs/architecture/             # 현재 도메인 흐름 · 구조 축소 기록
 ```
@@ -117,7 +118,7 @@ CoC-Bot/
 | 경로 | 역할 |
 |---|---|
 | `dice.py` | d100 판정/성공등급, 보너스·페널티 주사위, 다이스 표기(`XdY+Z`) 파서, SAN 체크, 대립판정 — 판정 계산 로직 전부가 여기 있다. |
-| `storage.py` | Postgres 스키마(`characters`, `scenarios`, `scenario_participants`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치 — DB 접근 전부가 여기 있다. |
+| `storage.py` | SQLite 스키마(`characters`, `scenarios`, `scenario_participants`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치 — DB 접근 전부가 여기 있다. |
 | `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
@@ -143,13 +144,14 @@ CoC-Bot/
 | `tests/test_narration_view.py` | `NarrationView` 투표 권한, 중복 투표, 정족수, 오래된 진행 및 완료 처리 테스트 |
 | `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
 | `tests/test_scenario_parser.py` | 구글독스 HTML 아웃라인 파싱, 문장 분리(대사 보존 포함) 테스트 |
-| `tests/test_storage_characters.py` / `test_storage_scenarios.py` | `storage.py` 통합 테스트, `TEST_DATABASE_URL` 환경변수가 없으면 스킵 |
+| `tests/test_storage_characters.py` / `test_storage_scenarios.py` | 임시 SQLite 파일로 `storage.py` 저장·조회 통합 테스트 |
 | `requirements.in` / `requirements-dev.in` | 직접 의존성 버전과 테스트 도구 목록 |
 | `requirements.txt` / `requirements-dev.txt` | 모든 하위 의존성까지 고정한 설치용 잠금 파일 |
+| `requirements-migrate.txt` / `scripts/migrate_postgres_to_sqlite.py` | 기존 PostgreSQL 데이터 이전 전용 도구와 의존성 |
 | `pytest.ini` | 프로젝트 루트를 `sys.path`에 추가해 `dice.py`/`bot` 임포트가 되도록 설정 |
 | `Dockerfile` | `python:3.12-slim` 베이스, 의존성 설치 후 소스 복사, `python -m bot.main`으로 기동 |
 | `.dockerignore` | 이미지 빌드 시 `.env`/`.git`/`.venv`/`tests/` 등을 제외해 시크릿 유출과 이미지 비대화를 방지 |
-| `.env.example` | `DISCORD_TOKEN=`, `DATABASE_URL=`, `GEMINI_API_KEY=` 를 담은 환경변수 템플릿 (실제 값은 커밋하지 않음) |
+| `.env.example` | `DISCORD_TOKEN=`, `DATABASE_PATH=`, `GEMINI_API_KEY=` 를 담은 환경변수 템플릿 (실제 값은 커밋하지 않음) |
 | `docs/superpowers/specs/…design.md` | 설계 스펙 (요구사항, 아키텍처 결정) |
 | `docs/superpowers/plans/…coc-discord-bot.md` | 태스크별 TDD 구현 계획 |
 
@@ -165,7 +167,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export DISCORD_TOKEN=발급받은_토큰
-export DATABASE_URL=postgres://user:password@localhost/coc_bot
+export DATABASE_PATH=data/coc-bot.sqlite3
 # /행동을 사용할 때만 필요
 export GEMINI_API_KEY=발급받은_Gemini_API_키
 python -m bot.main
@@ -177,14 +179,30 @@ Gemini 키는 `/행동` 기능을 사용할 때만 전달하면 된다.
 
 ```bash
 docker build -t coc-bot .
-docker run -e DISCORD_TOKEN=발급받은_토큰 -e DATABASE_URL=postgres://user:password@host/coc_bot coc-bot
+docker run -v "$(pwd)/data:/app/data" -e DISCORD_TOKEN=발급받은_토큰 coc-bot
 ```
 
 ## 저비용 호스팅
 
-봇을 기동하려면 Postgres가 필수다(판정 명령어만 쓰더라도 마찬가지). Railway, Supabase,
-Neon 등 무료/저가 티어의 관리형 Postgres를 `DATABASE_URL`로 연결해 쓰면 되고, 봇 프로세스
-자체는 여전히 1 vCPU / 512MB급 저사양 인스턴스로 충분하다.
+봇은 외부 DB 없이 SQLite를 사용한다. 기본 DB 파일은 `data/coc-bot.sqlite3`이다.
+호스팅 환경에서는 재배포·재시작 후에도 파일이 남도록 영구 디스크를 연결하고
+`DATABASE_PATH`를 그 디스크 경로(예: `/var/data/coc-bot.sqlite3`)로 지정해야 한다.
+Render의 파일 시스템은 별도 영구 디스크가 없으면 재배포 때 초기화될 수 있다.
+SQLite는 한 봇 인스턴스가 파일 하나를 쓰는 운영에 적합하며, 여러 인스턴스가 같은 DB를
+동시에 쓰는 구성은 지원하지 않는다.
+
+**기존 PostgreSQL 데이터 이전.** SQLite 전환만으로 PostgreSQL 자료가 자동 복사되지는
+않는다. 기존 서버를 읽을 수 있는 환경에서 일회성 도구를 실행한다:
+
+```bash
+pip install -r requirements-migrate.txt
+export DATABASE_URL='기존 PostgreSQL 연결 주소'
+python scripts/migrate_postgres_to_sqlite.py --sqlite-path data/coc-bot.sqlite3
+```
+
+이 도구는 `scenarios`, `characters`, `scenario_participants`와 ID·진행 위치를 복사한다.
+대상 SQLite DB에 자료가 있으면 덮어쓰지 않고 중단한다. 이전을 마친 뒤 운영 앱의
+`DATABASE_PATH`를 동일한 SQLite 파일 위치로 설정한다.
 
 ## 테스트
 

@@ -1,14 +1,33 @@
-import asyncpg
+import asyncio
+from contextlib import asynccontextmanager
 import json
+from pathlib import Path
+import re
+import sqlite3
 from typing import Literal
 
 from dice import SanityResult, sanity_check
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS scenarios (
+    id INTEGER PRIMARY KEY,
+    guild_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    keeper_user_id INTEGER NOT NULL,
+    doc_url TEXT NOT NULL,
+    structure TEXT NOT NULL,
+    channel_id INTEGER,
+    current_scene_index INTEGER NOT NULL DEFAULT 0,
+    current_line_index INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (guild_id, title),
+    UNIQUE (channel_id)
+);
+
 CREATE TABLE IF NOT EXISTS characters (
-    id SERIAL PRIMARY KEY,
-    guild_id BIGINT NOT NULL,
-    discord_user_id BIGINT NOT NULL,
+    id INTEGER PRIMARY KEY,
+    guild_id INTEGER NOT NULL,
+    discord_user_id INTEGER NOT NULL,
     name TEXT,
     occupation TEXT,
     age INTEGER,
@@ -34,31 +53,14 @@ CREATE TABLE IF NOT EXISTS characters (
     build TEXT,
     cash INTEGER,
     assets INTEGER,
-    skills JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (guild_id, discord_user_id)
+    skills TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    role TEXT NOT NULL DEFAULT 'PC',
+    scenario_id INTEGER REFERENCES scenarios(id),
+    is_retired INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS scenarios (
-    id SERIAL PRIMARY KEY,
-    guild_id BIGINT NOT NULL,
-    title TEXT NOT NULL,
-    keeper_user_id BIGINT NOT NULL,
-    doc_url TEXT NOT NULL,
-    structure JSONB NOT NULL,
-    channel_id BIGINT,
-    current_scene_index INTEGER NOT NULL DEFAULT 0,
-    current_line_index INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (guild_id, title),
-    UNIQUE (channel_id)
-);
-
-ALTER TABLE characters ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'PC';
-ALTER TABLE characters ADD COLUMN IF NOT EXISTS scenario_id INTEGER REFERENCES scenarios(id);
-ALTER TABLE characters ADD COLUMN IF NOT EXISTS is_retired BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE characters DROP CONSTRAINT IF EXISTS characters_guild_id_discord_user_id_key;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_characters_pc
     ON characters (guild_id, discord_user_id) WHERE role = 'PC';
 CREATE UNIQUE INDEX IF NOT EXISTS ux_characters_npc_kpc
@@ -69,15 +71,83 @@ CREATE TABLE IF NOT EXISTS scenario_participants (
     character_id INTEGER NOT NULL REFERENCES characters(id),
     PRIMARY KEY (scenario_id, character_id)
 );
-
 """
 
 
-async def create_pool(dsn: str) -> asyncpg.Pool:
-    pool = await asyncpg.create_pool(dsn)
-    async with pool.acquire() as conn:
-        await conn.execute(SCHEMA_SQL)
-    return pool
+class SQLiteConnection:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    @staticmethod
+    def _query(sql: str) -> str:
+        return re.sub(r"\$\d+", "?", sql)
+
+    async def execute(self, sql: str, *args) -> str:
+        cursor = await asyncio.to_thread(self._connection.execute, self._query(sql), args)
+        rowcount = cursor.rowcount
+        await asyncio.to_thread(cursor.close)
+        return f"UPDATE {rowcount}"
+
+    async def fetchrow(self, sql: str, *args):
+        cursor = await asyncio.to_thread(self._connection.execute, self._query(sql), args)
+        row = await asyncio.to_thread(cursor.fetchone)
+        await asyncio.to_thread(cursor.close)
+        return row
+
+    async def fetch(self, sql: str, *args):
+        cursor = await asyncio.to_thread(self._connection.execute, self._query(sql), args)
+        rows = await asyncio.to_thread(cursor.fetchall)
+        await asyncio.to_thread(cursor.close)
+        return rows
+
+    async def fetchval(self, sql: str, *args):
+        row = await self.fetchrow(sql, *args)
+        return row[0] if row is not None else None
+
+    @asynccontextmanager
+    async def transaction(self):
+        await asyncio.to_thread(self._connection.execute, "BEGIN IMMEDIATE")
+        try:
+            yield self
+        except BaseException:
+            await asyncio.to_thread(self._connection.rollback)
+            raise
+        else:
+            await asyncio.to_thread(self._connection.commit)
+
+
+class SQLitePool:
+    """A single SQLite connection, serialized to keep async callers safe."""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = SQLiteConnection(connection)
+        self._lock = asyncio.Lock()
+
+    @asynccontextmanager
+    async def acquire(self):
+        async with self._lock:
+            yield self._connection
+
+    async def close(self) -> None:
+        async with self._lock:
+            await asyncio.to_thread(self._connection._connection.close)
+
+
+async def create_pool(path: str) -> SQLitePool:
+    if path != ":memory:":
+        Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+    connection = await asyncio.to_thread(
+        sqlite3.connect, str(Path(path).expanduser()) if path != ":memory:" else path,
+        check_same_thread=False,
+        timeout=30,
+        isolation_level=None,
+    )
+    connection.row_factory = sqlite3.Row
+    await asyncio.to_thread(connection.execute, "PRAGMA foreign_keys = ON")
+    await asyncio.to_thread(connection.execute, "PRAGMA busy_timeout = 30000")
+    await asyncio.to_thread(connection.execute, "PRAGMA journal_mode = WAL")
+    await asyncio.to_thread(connection.executescript, SCHEMA_SQL)
+    return SQLitePool(connection)
 
 
 _CHARACTER_COLUMNS = [
@@ -93,7 +163,7 @@ def _quote(column: str) -> str:
 
 
 async def _upsert_character(
-    conn: asyncpg.Connection,
+    conn: SQLiteConnection,
     guild_id: int,
     user_id: int,
     data: dict,
@@ -105,7 +175,7 @@ async def _upsert_character(
     values[skills_index] = json.dumps(values[skills_index] or {})
 
     quoted = [_quote(c) for c in _CHARACTER_COLUMNS]
-    placeholders = ", ".join(f"${i + 5}" for i in range(len(_CHARACTER_COLUMNS)))
+    placeholders = ", ".join("?" for _ in _CHARACTER_COLUMNS)
     current_fields = {"hp_current", "mp_current", "san_current"}
     update_clause = ", ".join(
         f"{_quote(column)} = EXCLUDED.{_quote(column)}"
@@ -113,8 +183,8 @@ async def _upsert_character(
         if column not in current_fields
     )
     update_clause += """
-        , hp_current = LEAST(COALESCE(characters.hp_current, EXCLUDED.hp_max), EXCLUDED.hp_max)
-        , mp_current = LEAST(COALESCE(characters.mp_current, EXCLUDED.mp_max), EXCLUDED.mp_max)
+        , hp_current = MIN(COALESCE(characters.hp_current, EXCLUDED.hp_max), EXCLUDED.hp_max)
+        , mp_current = MIN(COALESCE(characters.mp_current, EXCLUDED.mp_max), EXCLUDED.mp_max)
         , san_current = COALESCE(characters.san_current, EXCLUDED.san_current)
     """
     conflict = (
@@ -124,15 +194,15 @@ async def _upsert_character(
     )
     query = f"""
         INSERT INTO characters (guild_id, discord_user_id, role, scenario_id, {", ".join(quoted)}, updated_at)
-        VALUES ($1, $2, $3, $4, {placeholders}, now())
+        VALUES (?, ?, ?, ?, {placeholders}, CURRENT_TIMESTAMP)
         ON CONFLICT {conflict}
-        DO UPDATE SET {update_clause}, updated_at = now()
+        DO UPDATE SET {update_clause}, updated_at = CURRENT_TIMESTAMP
     """
     await conn.execute(query, guild_id, user_id, role, scenario_id, *values)
 
 
 async def upsert_character(
-    pool: asyncpg.Pool,
+    pool: SQLitePool,
     guild_id: int,
     user_id: int,
     data: dict,
@@ -149,10 +219,11 @@ def _row_to_character(row) -> dict | None:
     result = dict(row)
     if isinstance(result["skills"], str):
         result["skills"] = json.loads(result["skills"])
+    result["is_retired"] = bool(result["is_retired"])
     return result
 
 
-async def get_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict | None:
+async def get_character(pool: SQLitePool, guild_id: int, user_id: int) -> dict | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT * FROM characters WHERE guild_id = $1 AND discord_user_id = $2",
@@ -162,7 +233,7 @@ async def get_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict
     return _row_to_character(row)
 
 
-async def get_pc_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> dict | None:
+async def get_pc_character(pool: SQLitePool, guild_id: int, user_id: int) -> dict | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT * FROM characters WHERE guild_id = $1 AND discord_user_id = $2 AND role = 'PC'",
@@ -173,7 +244,7 @@ async def get_pc_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> d
 
 
 async def resolve_sanity_check(
-    pool: asyncpg.Pool, guild_id: int, user_id: int, formula: str
+    pool: SQLitePool, guild_id: int, user_id: int, formula: str
 ) -> tuple[Literal["missing", "retired", "incomplete", "ok"], SanityResult | None]:
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -181,7 +252,6 @@ async def resolve_sanity_check(
                 """
                 SELECT san_current, is_retired FROM characters
                 WHERE guild_id = $1 AND discord_user_id = $2 AND role = 'PC'
-                FOR UPDATE
                 """,
                 guild_id,
                 user_id,
@@ -196,11 +266,11 @@ async def resolve_sanity_check(
             result = sanity_check(row["san_current"], formula)
             await conn.execute(
                 """
-                UPDATE characters SET san_current = $1, is_retired = $2, updated_at = now()
+                UPDATE characters SET san_current = $1, is_retired = $2, updated_at = CURRENT_TIMESTAMP
                 WHERE guild_id = $3 AND discord_user_id = $4 AND role = 'PC'
                 """,
                 result.remaining_san,
-                result.remaining_san == 0,
+                int(result.remaining_san == 0),
                 guild_id,
                 user_id,
             )
@@ -208,7 +278,7 @@ async def resolve_sanity_check(
 
 
 async def get_skill_value(
-    pool: asyncpg.Pool, guild_id: int, user_id: int, skill_name: str
+    pool: SQLitePool, guild_id: int, user_id: int, skill_name: str
 ) -> int | None:
     character = await get_pc_character(pool, guild_id, user_id)
     if character is None:
@@ -226,7 +296,7 @@ def _scenario_row_to_dict(row) -> dict | None:
 
 
 async def create_scenario(
-    pool: asyncpg.Pool,
+    pool: SQLitePool,
     guild_id: int,
     title: str,
     keeper_user_id: int,
@@ -249,7 +319,7 @@ async def create_scenario(
         return row["id"]
 
 
-async def get_scenario_by_title(pool: asyncpg.Pool, guild_id: int, title: str) -> dict | None:
+async def get_scenario_by_title(pool: SQLitePool, guild_id: int, title: str) -> dict | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT * FROM scenarios WHERE guild_id = $1 AND title = $2", guild_id, title
@@ -257,14 +327,14 @@ async def get_scenario_by_title(pool: asyncpg.Pool, guild_id: int, title: str) -
     return _scenario_row_to_dict(row)
 
 
-async def get_scenario_by_channel(pool: asyncpg.Pool, channel_id: int) -> dict | None:
+async def get_scenario_by_channel(pool: SQLitePool, channel_id: int) -> dict | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM scenarios WHERE channel_id = $1", channel_id)
     return _scenario_row_to_dict(row)
 
 
 async def bind_scenario_channel(
-    pool: asyncpg.Pool, guild_id: int, title: str, channel_id: int
+    pool: SQLitePool, guild_id: int, title: str, channel_id: int
 ) -> bool:
     async with pool.acquire() as conn:
         try:
@@ -274,12 +344,12 @@ async def bind_scenario_channel(
                 guild_id,
                 title,
             )
-        except asyncpg.UniqueViolationError:
+        except sqlite3.IntegrityError:
             return False
     return result == "UPDATE 1"
 
 
-async def get_roster(pool: asyncpg.Pool, scenario_id: int) -> list[dict]:
+async def get_roster(pool: SQLitePool, scenario_id: int) -> list[dict]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
@@ -290,16 +360,10 @@ async def get_roster(pool: asyncpg.Pool, scenario_id: int) -> list[dict]:
             """,
             scenario_id,
         )
-    results = []
-    for row in rows:
-        character = dict(row)
-        if isinstance(character["skills"], str):
-            character["skills"] = json.loads(character["skills"])
-        results.append(character)
-    return results
+    return [_row_to_character(row) for row in rows]
 
 
-async def join_scenario(pool: asyncpg.Pool, scenario_id: int, character_id: int) -> None:
+async def join_scenario(pool: SQLitePool, scenario_id: int, character_id: int) -> None:
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -313,7 +377,7 @@ async def join_scenario(pool: asyncpg.Pool, scenario_id: int, character_id: int)
 
 
 async def advance_narration_position(
-    pool: asyncpg.Pool,
+    pool: SQLitePool,
     scenario_id: int,
     expected_scene_index: int,
     expected_line_index: int,

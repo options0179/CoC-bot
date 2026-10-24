@@ -1,5 +1,4 @@
 import asyncio
-import os
 
 import pytest
 
@@ -12,20 +11,11 @@ from storage import (
     upsert_character,
 )
 
-TEST_DSN = os.environ.get("TEST_DATABASE_URL")
-
-pytestmark = pytest.mark.skipif(not TEST_DSN, reason="TEST_DATABASE_URL not set")
-
-
 @pytest.fixture
-def run_db():
+def run_db(tmp_path):
     def _run(body):
         async def _main():
-            pool = await create_pool(TEST_DSN)
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    "TRUNCATE scenario_participants, characters, scenarios"
-                )
+            pool = await create_pool(str(tmp_path / "characters.sqlite3"))
             try:
                 return await body(pool)
             finally:
