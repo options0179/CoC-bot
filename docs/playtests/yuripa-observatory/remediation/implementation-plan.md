@@ -74,18 +74,18 @@
 - Modify: `bot/cogs/scenario.py` 또는 `bot/embeds.py` (완료 상태 표시 위치에 따라)
 - Test: `tests/test_narration_cog.py`, `tests/test_narration_view.py`, `tests/test_embeds.py`, 필요 시 `tests/test_main.py`
 
-**Interfaces:** persistent custom ID에 시나리오 및 낭독 위치를 포함한다. 봇 시작 시 저장된 모든 시나리오의 모든 줄 위치를 등록해 재시작 전 메시지의 오래된 custom ID도 라우팅한다. callback은 DB 위치를 재검증해 낡은 버튼을 처리한다. 투표는 메모리 상태이므로 재시작 시 초기화한다. 같은 Discord ID가 Keeper/PC 양쪽이면 고유 참가자 한 명이다.
+**Interfaces:** persistent custom ID에 시나리오 및 낭독 위치를 포함한다. 봇 시작 시 저장된 모든 시나리오의 모든 줄 위치를 등록해 해당 ID로 만든 과거 메시지 버튼도 라우팅한다. 첫 persistent ID 배포 이전 버전의 임의 ID는 복원할 수 없으므로 배포 후 `/낭독시작`으로 현재 위치 버튼을 발급한다. callback은 DB 위치를 재검증해 낡은 버튼을 처리한다. 투표는 메모리 상태이므로 재시작 시 초기화되며 복원된 버튼의 첫 투표에서 초기화 사실을 알린다. 같은 위치에서 여러 `/낭독시작` 메시지가 있어도 표를 공유하며, 투표·진행·화면 갱신은 위치별로 순차 처리한다. 같은 Discord ID가 Keeper/PC 양쪽이면 고유 참가자 한 명이다.
 
-- [ ] 중복/낡은 위치와 참가자 정족수(특히 같은 Discord ID가 Keeper/PC에 쓰이는 경우)를 검증하는 테스트를 먼저 추가한다.
+- [ ] 중복/낡은 위치, 재시작 투표 초기화 안내, 중복 `/낭독시작` 메시지의 공유 정족수, 동시 클릭 순서를 검증하는 테스트를 먼저 추가한다.
 - [ ] 마지막 진행 위치가 `len(structure)`일 때 완료를 반환하고 조회가 “완료”를 표시하는 테스트를 추가한다.
-- [ ] Persistent view 등록 및 재시작 후 현재 버튼 재개 동작을 구현한다. storage에서 저장된 시나리오를 읽고 모든 줄 위치의 custom ID를 등록해 과거 메시지의 버튼도 callback으로 받고 stale 응답을 준다.
+- [ ] Persistent view 등록 및 재시작 후 현재 버튼 재개 동작을 구현한다. storage에서 저장된 시나리오를 읽고 모든 줄 위치의 새 형식 custom ID를 등록해 해당 형식의 과거 메시지도 stale 응답을 받게 한다.
 - [ ] 모든 낭독 테스트와 `pytest tests/test_narration_cog.py tests/test_narration_view.py tests/test_embeds.py tests/test_main.py -q`를 실행한다.
 
 ### Task 4: Named volume 로컬 Docker 실행 및 절차 문서화
 
 **Files:**
 - Create: `compose.yaml`
-- Modify: `README.md`
+- Modify: `README.md` (named volume migration and legacy narration button recovery instructions)
 - Test: 실행 절차 self-check 또는 Docker 검증 기록
 
 **Interfaces:** `docker compose up --build`가 `.env`를 사용하고 `coc-bot-data` named volume을 `/app/data`에 연결한다. host port는 loopback에만 노출한다.
