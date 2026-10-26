@@ -1,61 +1,95 @@
-# Reproduction and root causes
+# Playtest failures, outcomes, and follow-up
 
-Scope: read-only inspection and local automated tests on branch `fix/scenario-aware-playtest-reliability`. No `.env` values, Docker environment inspection, Discord/browser actions, or external service mutations were used.
+Updated 2026-10-26 after the local remediation build. This report separates earlier observed behavior from current branch verification. Dice outcomes are gameplay results, not technical failures.
 
-## Current observations
+## What happened
 
-| Behavior | Expected by remediation design | Current code/evidence |
-|---|---|---|
-| `/행동` scene awareness | Use the channel's bound scenario, current scene, PC skills, and registered check rules to choose a validated rule and narrate the matching result branch. | `bot/cogs/action.py` calls `analyze_intent(설명, "")`; it supplies no scenario context and selects neither a registered rule nor scenario branch. This is a reproducible implementation gap, not a transient Gemini failure. The existing `test_action_cog.py` mocks the analyzer and does not assert scene lookup. |
-| `/행동` analyzer error handling | Distinguish provider/network/timeout/response-format errors and finish the interaction with a useful bounded response. | The action command catches only `ValueError` and responds `행동을 분석하지 못했습니다. 다시 서술해 주세요.`. Other exceptions flow to the global app-command handler (`bot/main.py`), whose generic response is `명령어 처리 중 오류가 발생했습니다.`. The exact provider exception classes are not exercised by current tests. |
-| Narration quorum with shared Keeper/PC account | Require two distinct eligible Discord accounts for a two-person Keeper+PC test. | Eligibility is a set of Discord IDs; `required_votes = (2 * len(eligible_user_ids) + 2) // 3`. If Keeper and PC use the same ID, they collapse to one eligible voter and one vote advances. This matches the historical playtest note and is also directly implied by current code. Current unit tests cover a Keeper-only one-voter quorum, but do not cover shared Keeper/PC identity. |
-| Narration restart/persistent controls | Re-register usable controls on restart; stale controls should report that the position already moved. | `NarrationView` uses the default generated button custom ID and a 900-second in-memory view; `bot/main.py` has no persistent-view registration. Existing tests cover stale progression through an in-memory view, not restart recovery. |
-| Scenario completion | Show completion in `/시나리오조회` after the last line. | The Oct 26 playtest record says completion and lookup display succeeded. Current tests also cover last-line completion and the scenario embed. |
-| Local tests | Full automated suite passes. | Reproduced below: 177 passed, one `audioop` deprecation warning. |
+| When | Action | Expected | Actual result | Count / status |
+|---|---|---|---|---|
+| 2026-10-24, Discord | `/시나리오조회` twice and `/판정 스킬값:50` | Discord should acknowledge and answer each command | All three showed “애플리케이션이 응답하지 않았어요”. The bot was online; endpoint URL was empty, Gateway Intent active, and application-command permission was enabled in the checked channel. The deployed process, revision, and logs were unavailable, so the production cause could not be established. | 3 interaction timeouts; unresolved historically |
+| 2026-10-26, Discord | First `/행동` request | Gemini should analyze the action | Gemini returned HTTP 404 for `gemini-2.5-flash`; the user saw the generic command error. These are one failed request, not two. | 1 provider failure |
+| 2026-10-26, local rebuild | Retry `/행동` after changing the model ID | Analysis should complete | The request succeeded with `gemini-3.8-flash`. The recorded action chose Observe 65 and rolled 50, a success. At that time no scene context was supplied, so this one correct-looking choice did not prove scenario awareness. | 1 retry succeeded; behavior gap found |
+| 2026-10-26, Discord session notes | `/시나리오등록` | Register the fictional playtest scenario | First request returned a generic error; retry registered the scenario and parsed 3 scenes. The specific underlying error was not recorded. | 1 failed attempt, 1 successful retry; cause unknown |
+| 2026-10-26, Discord session notes | `/판정` | Show the manual check result | A roll of 55 succeeded, then the interaction callback errored because a view was explicitly passed as `None`. The code was fixed before this branch's remediation work. | 1 post-roll response failure; fixed earlier |
+| 2026-10-26, Discord session notes | `/행동` | Analyze the action | A separate Gemini 503 was recorded. The response was an error; no successful roll is recorded for that request. | 1 provider failure; no production log retained |
+| 2026-10-26, Discord session notes | Old narration button after a bot restart | Existing button should continue | Discord reported that the application did not respond. Old controls had random IDs and were not restored after restart. | 1 stale-control timeout; current recovery path added, but old buttons cannot be revived |
+| 2026-10-26, local Docker replacement | Stop old container | Container should stop within the graceful timeout | `docker stop --time 30 coc-bot` waited 30 seconds and then ended with exit 137 (forced kill). Old container logs were not captured before removal, so the shutdown cause is unknown. The replacement started and is healthy. | 1 forced termination; investigate |
+| 2026-10-26, current audit | First DB verification query | Read scenario positions | Query used a guessed table name and returned “no such table”. Reading the schema showed the correct table is `scenarios`; the corrected read-only query succeeded. No database data was changed. | 1 audit-command error; not an application failure |
 
-## Reproduced now
+The count of recorded Discord/API request failures is **8** across the dated runs: 3 interaction timeouts on Oct 24, 1 Gemini 404, 1 scenario-registration attempt, 1 manual-roll callback failure, 1 separate Gemini 503, and 1 stale narration control timeout. The generic error shown for the Gemini 404 is included in that same event. The Docker forced termination is a separate operational failure, and the mistaken audit query is a separate verification-tool error. These counts are from the preserved notes, not a single continuous run.
 
-Command: `/tmp/coc-bot-local-test-venv/bin/pytest -q`
+## Ordinary dice results from the first playtest
 
-Result: exit code 0; **177 passed, 1 warning in 0.83s**. Warning signature:
+| Command | Roll(s) | Result | Interpretation |
+|---|---:|---|---|
+| `/행동` | Observe 65; 50 | Success | A random game result. The selected skill happened to match the scene, but the implementation did not yet receive the scene. |
+| `/판정` plus push | 88, then 89 at skill 65 | Both fail | Normal dice results; push button worked once for the roller. |
+| `/산정 0/1d4` | 55 | Success; SAN loss 0; SAN stayed 60/60 | Normal result; storage was read back successfully. |
+| `/대립` | 90 and 72 at skills 65 and 50 | Both fail; higher skill was shown as winner | Normal result under the existing opposed-check ranking rule. |
+| `/낭독시작` | 11 narration lines | Reached completion and lookup showed complete | Sequential flow worked. Keeper and PC were the same Discord account, so this did not test a two-account quorum. |
 
-```text
-DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+These rolls include four failed game checks (two `/판정` rolls and two rolls inside one `/대립` command). They are not evidence of bot defects. The `/산정` check succeeded and caused no loss.
+
+## Current branch verification
+
+The branch now includes scenario-aware action resolution, persistent narration controls, race-safe voting, and local Compose persistence. Current evidence:
+
+| Check | Result |
+|---|---|
+| Automated suite | `217 passed, 1 warning` in 0.90s. The warning is Python's `audioop` deprecation emitted by the installed Discord voice module. |
+| Local health endpoint | HTTP 200 before and after Compose restart. |
+| SQLite integrity | `PRAGMA integrity_check` returned `ok` before and after restart. |
+| Saved scene positions | Before and after restart: `[(1, 0, 0), (2, 3, 0)]`; no position change. |
+| Docker Compose | Container is running and bound to `127.0.0.1:18080`; the existing `coc-bot-data` volume was reused. Compose warned that this pre-existing volume was not created by Compose. This was benign for the existing installation. |
+| External deployment | None; work and verification used the local Docker service. |
+
+At startup, Discord.py also warns that PyNaCl and `davey` are absent (voice playback unavailable), and that the privileged message-content intent is missing. Slash commands connected to the Gateway in the observed run; neither warning has been shown to cause the historical interaction timeouts.
+
+## How the behavior changed
+
+```mermaid
+flowchart LR
+  subgraph Before[Before this branch]
+    A[Player action text] --> B[Gemini without scene context]
+    B --> C[Free-form skill choice]
+    C --> D[No registered success/failure branch]
+    E[Restart] --> F[Old random narration buttons stop responding]
+    G[Two /낭독시작 messages] --> H[Vote counts can split or race]
+    I[Container replacement] --> J[Data location depended on old setup]
+  end
+  subgraph After[Current branch]
+    A2[Player action text] --> B2[Load bound scenario, scene and registered checks]
+    B2 --> C2[Accept only a known check ID and enrolled PC skill]
+    C2 --> D2[Roll with existing dice rules]
+    D2 --> E2[Use that check's success or failure text]
+    F2[Restart] --> G2[Restore stable-ID controls; stale clicks explain movement]
+    H2[Duplicate starts/clicks] --> I2[Shared vote set and per-position lock]
+    J2[Compose named volume] --> K2[Scenario position survives restart]
+  end
 ```
 
-Relevant test evidence:
+`/행동` now uses the actual scene and its registered check rules. It does not let the model invent a skill or dice result: the model must return a known rule ID; the bot validates the rule, the PC, and the skill, then rolls using existing dice code. An ambiguous or invalid match does not roll and leaves `/판정` as the manual fallback. Automatic scenario-ending selection is still a Keeper choice; the current checks provide success/failure narration for registered actions, not an entire autonomous GM.
 
-- `tests/test_action_cog.py`: mocks analyzer and verifies basic roll, missing skill, unknown skill, `ValueError`, and missing key. It does not test real scenario context or provider-specific failure classes.
-- `tests/test_narration_view.py`: tests distinct-user voting, duplicate vote, stale in-memory progression, one-person quorum, and end-of-scenario completion. It does not test same Discord ID assigned to Keeper and PC or process restart.
-- `tests/test_embeds.py`, `tests/test_scenario_cog.py`: completion display behavior.
-- `tests/test_intent_analyzer.py`: prompt and response parsing against fake model responses, not a live provider request.
+Narration buttons created by the new code have stable IDs and are restored at startup. The button clicks read the saved database position; a stale click explains that the position has moved. Votes are in memory and reset after restart, with a notice on the next valid vote. Old buttons created with random IDs cannot be restored; use `/낭독시작` to get a button for the current saved line. If Keeper and PC share a Discord account, they remain one eligible voter by design.
 
-The current implementation's analyzer context is visibly empty at `bot/cogs/action.py` (`analyze_intent, 설명, ""`), so the no-scene-context cause is confirmed by source. The same-account quorum cause is visible in `bot/cogs/narration.py` where eligible IDs are deduplicated into a set before quorum calculation. These are code-level reproductions; no external Discord run was performed for this report.
+## What remains unverified and what to investigate next
 
-## Prior-run evidence (historical; not reproduced in this run)
+1. **Historical Discord timeouts:** collect the actual runtime's revision, process logs, interaction acknowledgement timing, Gateway reconnects, and Discord API errors if a timeout recurs. The Oct 24 deployed instance was not available, so its root cause remains unknown.
+2. **Forced Docker stop:** capture `docker inspect` state and logs before replacement; check SIGTERM handling and shutdown hooks, then verify stop completes within the configured grace period. Exit 137 alone does not identify which shutdown step stalled.
+3. **Live scenario-aware action:** current automated tests exercise registered rule mapping and error cases, but this report does not claim a new live Discord run of the changed `/행동` flow. A live run needs a scenario document with a `Checks` table and a real PC with the named skills.
+4. **Two-account narration quorum:** the earlier Discord test used one account for Keeper and PC. Validate one vote does not advance and the second eligible account does, using two distinct accounts.
+5. **Google export variations:** tests parse a representative Docs HTML table. Verify a fresh real Docs export with the optional `Checks` table, including missing/duplicate IDs and unregistered skill names.
+6. **Volume warning on a new host:** existing data was preserved, but Compose warns when reusing the pre-existing named volume. A clean installation should explicitly create the volume or declare it external in Compose and document that setup.
+7. **Provider reliability:** tests cover mocked provider failures; live 404/503/timeout cases were not triggered again. Keep the model identifier and provider status in diagnostics without logging credentials or prompt contents.
 
-These are recorded in `docs/playtests/yuripa-observatory/test-plan.md`, section 9.1 and section 10, and are not counted as this run's test outcomes:
+## Recommended order
 
-- **2026-10-24 Discord timeout:** `/시나리오조회` twice showed Discord's `애플리케이션이 응답하지 않았어요`; `/판정 스킬값:50` also timed out. The contemporaneous diagnosis found the bot online, interaction endpoint URL empty, Gateway Intent active, and `#이벤트` permission allowing application commands. Local `/판정` code did not use DB or Gemini. The actual production process, deployment revision, and logs were unavailable, so the operating cause was not established.
-- **2026-10-26 retired model ID:** first `/행동` returned Gemini HTTP 404 for `gemini-2.5-flash`; the record attributes it to an unavailable model ID, not a confirmed credential failure. After switching to `gemini-3.8-flash` and rebuilding the local image, `/행동` succeeded.
-- **2026-10-26 generic error presentation:** the playtest record says the shared command error handler surfaced `명령어 처리 중 오류가 발생했습니다.` for the model error, while the cause was visible only in server logs.
-- **2026-10-26 gameplay dice outcomes:** `/행동` chose 관찰력 65 and rolled 50 (success); `/판정` rolled 88 then push 89 (both failures); `/산정 0/1d4` rolled 55 (success, 0 loss); `/대립` rolled 90 and 72 (both failures, higher skill won per current opposed rule). These are gameplay RNG outcomes, **not technical failures** and should not be aggregated with provider errors or interaction timeouts.
-- **2026-10-26 narration account setup:** the test used the same Discord user for Keeper and PC, so one vote advanced each line. The run verified sequential progression through 11 lines and completion, but did not verify a true two-account quorum. This is evidence of the test setup limitation and is consistent with the code-level quorum cause above.
-
-## Not reproduced / evidence gaps
-
-- No live Gemini 404/429/503, network failure, timeout, or malformed provider response was triggered. The historical 404 is prior-run evidence only.
-- No current Discord interaction timeout was triggered. Historical production root cause remains unknown without the actual deployed service logs and revision.
-- No two-account Discord narration quorum, stale Discord component after process restart, or restart recovery was run.
-- No Docker Compose health, SQLite integrity, or restart-persistence check was run in this task.
-- No registered scenario rules exist in the current parser/action path; therefore scenario-specific success/failure narration cannot be demonstrated through the live command. `scenario_parser.py` currently parses narration structure only.
-- We have no evidence that dice failures are technical defects. The recorded failures above were ordinary random game results.
-
-## Root-cause summary
-
-1. **Missing scenario-aware behavior:** `/행동` explicitly passes an empty context and has no scenario-rule lookup/result-branch selection path. This is a current, source-confirmed feature gap.
-2. **Shared identity reduces narration quorum:** eligible voters are unique Discord IDs, so one account representing both Keeper and PC is one voter. The historical one-account test therefore cannot validate two-person consent; if that setup is allowed in production, one click satisfies its one-voter quorum.
-3. **Restart recovery is absent in current code:** narration controls are ephemeral in-memory views with generated custom IDs and no startup re-registration. Existing tests do not cover process restart.
-4. **Historical provider mismatch:** the Oct 26 404 was recorded against the retired model ID and cleared after switching model IDs. It was not independently reprobed here.
-5. **Historical Discord timeout remains undiagnosed:** Oct 24 evidence rules out several obvious local/portal causes but does not identify the production process failure. Do not attribute that timeout to the current code without deployment logs.
-
+```mermaid
+flowchart TD
+  A[Capture Docker logs and shutdown timing] --> B[Verify graceful SIGTERM stop]
+  B --> C[Run Compose restart and compare SQLite state]
+  C --> D[Register a fresh scenario with Checks table]
+  D --> E[Run /행동 with separate success and failure paths]
+  E --> F[Run narration with Keeper and PC on distinct accounts]
+  F --> G[Record Discord interaction latency and response outcomes]
+```
