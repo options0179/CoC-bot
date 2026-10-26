@@ -65,6 +65,13 @@ def test_action_uses_current_scene_rule_and_registered_skill(monkeypatch):
     assert any("문서를 발견한다" in field.value for field in embed.fields)
 
 
+def test_action_rolls_registered_rule_even_when_model_says_no_roll(monkeypatch):
+    _, _, _, _, roll = _setup(monkeypatch, intent=_intent(requires_roll=False))
+    interaction = _run()
+    roll.assert_called_once_with(60)
+    assert interaction.followup.send.call_args.kwargs["embed"].title == "관찰력 판정"
+
+
 @pytest.mark.parametrize("level,branch", [
     (SuccessLevel.CRITICAL, "success"), (SuccessLevel.EXTREME, "success"),
     (SuccessLevel.HARD, "success"), (SuccessLevel.REGULAR, "success"),
@@ -124,6 +131,26 @@ def test_action_refuses_roll_if_scene_moves_during_analysis(monkeypatch):
     get_scenario, _, _, _, roll = _setup(monkeypatch)
     get_scenario.side_effect = [SCENARIO, {**SCENARIO, "current_line_index": 1}]
     interaction = _run()
+    assert "장면이 이동" in interaction.followup.send.call_args.args[0]
+    roll.assert_not_called()
+
+
+def test_action_refuses_roll_if_scene_moves_while_reading_skill(monkeypatch):
+    get_scenario, _, get_skill, _, roll = _setup(monkeypatch)
+    moved = False
+
+    async def read_skill(*args):
+        nonlocal moved
+        moved = True
+        return 60
+
+    async def current_scenario(*args):
+        return {**SCENARIO, "current_line_index": 1} if moved else SCENARIO
+
+    get_skill.side_effect = read_skill
+    get_scenario.side_effect = current_scenario
+    interaction = _run()
+    get_skill.assert_awaited_once()
     assert "장면이 이동" in interaction.followup.send.call_args.args[0]
     roll.assert_not_called()
 

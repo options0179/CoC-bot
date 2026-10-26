@@ -71,22 +71,15 @@ class ActionCog(commands.Cog):
             await interaction.followup.send(message, ephemeral=True)
             return
 
-        if not intent.requires_roll:
+        rule = next((check for check in checks if check["id"] == intent.check_id), None)
+        if not intent.requires_roll and not rule:
             await interaction.followup.send(
                 embed=narration_embed(intent.action_summary, intent.purpose)
             )
             return
 
-        rule = next((check for check in checks if check["id"] == intent.check_id), None)
         if not rule or intent.confidence < 0.6 or rule["skill"] not in SKILL_NAMES:
             await interaction.followup.send(_MANUAL_CHECK, ephemeral=True)
-            return
-
-        current = await get_scenario_by_channel(self.pool, interaction.channel_id)
-        if not current or (current["id"], current["current_scene_index"], current["current_line_index"]) != (
-            scenario["id"], scenario["current_scene_index"], scenario["current_line_index"]
-        ):
-            await interaction.followup.send("분석하는 동안 장면이 이동했습니다. /행동 명령을 다시 입력해 주세요.", ephemeral=True)
             return
 
         roster = await get_roster(self.pool, scenario["id"])
@@ -102,6 +95,13 @@ class ActionCog(commands.Cog):
                 f"{rule['skill']} 기능값을 캐릭터 시트에서 확인할 수 없습니다. /판정을 사용해 주세요.",
                 ephemeral=True,
             )
+            return
+
+        current = await get_scenario_by_channel(self.pool, interaction.channel_id)
+        if not current or (current["id"], current["current_scene_index"], current["current_line_index"]) != (
+            scenario["id"], scenario["current_scene_index"], scenario["current_line_index"]
+        ):
+            await interaction.followup.send("처리하는 동안 장면이 이동했습니다. /행동 명령을 다시 입력해 주세요.", ephemeral=True)
             return
 
         result = roll_check(skill_value)
