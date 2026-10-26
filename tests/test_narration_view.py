@@ -145,3 +145,48 @@ def test_compare_and_set_race_returns_stale_ephemeral(monkeypatch):
     interaction.response.send_message.assert_awaited_once_with(
         "낭독이 이미 다음 위치로 이동했습니다.", ephemeral=True
     )
+
+
+def test_concurrent_vote_edits_finish_on_next_line(monkeypatch):
+    position = {"current_scene_index": 0, "current_line_index": 0}
+
+    async def current_position(*_):
+        return position.copy()
+
+    async def advance(*_):
+        position.update(current_scene_index=1, current_line_index=0)
+        return True
+
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", current_position)
+    monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
+
+    async def _run():
+        view = _view()
+        first = _make_interaction(user_id=1)
+        second = _make_interaction(user_id=2)
+        partial_started = asyncio.Event()
+        release_partial = asyncio.Event()
+        message = {}
+
+        async def slow_partial_edit(**kwargs):
+            partial_started.set()
+            await release_partial.wait()
+            message.update(kwargs)
+
+        async def quorum_edit(**kwargs):
+            message.update(kwargs)
+
+        first.response.edit_message.side_effect = slow_partial_edit
+        second.response.edit_message.side_effect = quorum_edit
+        first_task = asyncio.create_task(view.advance.callback(first))
+        await asyncio.wait_for(partial_started.wait(), 1)
+        second_task = asyncio.create_task(view.advance.callback(second))
+        await asyncio.sleep(0)
+        assert not second_task.done(), "quorum edit must wait for the partial edit"
+        release_partial.set()
+        await asyncio.wait_for(asyncio.gather(first_task, second_task), 1)
+        assert message["embed"].description == "문장2"
+        assert isinstance(message["view"], NarrationView)
+        assert position == {"current_scene_index": 1, "current_line_index": 0}
+
+    asyncio.run(_run())

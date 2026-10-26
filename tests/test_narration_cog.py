@@ -139,6 +139,36 @@ def test_keeper_and_pc_same_discord_account_need_one_vote(monkeypatch):
     advance.assert_awaited_once_with(cog.pool, 1, 0, 0, 0, 1)
 
 
+def test_repeated_start_messages_share_votes(monkeypatch):
+    scenario = {
+        "id": 1, "structure": _STRUCTURE, "current_scene_index": 0,
+        "current_line_index": 0, "keeper_user_id": 100,
+    }
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_channel", AsyncMock(return_value=scenario))
+    monkeypatch.setattr("bot.cogs.narration.get_roster", AsyncMock(return_value=[
+        {"discord_user_id": 101}, {"discord_user_id": 102},
+    ]))
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value=scenario))
+    advance = AsyncMock(return_value=True)
+    monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
+    cog = NarrationCog(bot=_make_bot())
+    first_message = _make_interaction(user_id=100)
+    second_message = _make_interaction(user_id=101)
+
+    async def _run():
+        await cog.start.callback(cog, first_message)
+        await cog.start.callback(cog, second_message)
+        first_view = first_message.response.send_message.call_args.kwargs["view"]
+        second_view = second_message.response.send_message.call_args.kwargs["view"]
+        assert first_view is not second_view
+        await first_view.advance.callback(_make_interaction(user_id=100))
+        await second_view.advance.callback(_make_interaction(user_id=101))
+        assert first_view.votes == second_view.votes == {100, 101}
+
+    asyncio.run(_run())
+    advance.assert_awaited_once_with(cog.pool, 1, 0, 0, 0, 1)
+
+
 def test_restart_registers_all_saved_positions_and_routes_current_and_old(monkeypatch, tmp_path):
     async def _run():
         database_path = str(tmp_path / "narration.sqlite3")
@@ -170,6 +200,9 @@ def test_restart_registers_all_saved_positions_and_routes_current_and_old(monkey
             assert current.votes == set()
             first = _make_interaction(user_id=100)
             await current.advance.callback(first)
+            first.followup.send.assert_awaited_once_with(
+                "봇 재시작으로 이전 투표가 초기화되었습니다.", ephemeral=True
+            )
             scenario = await get_scenario_by_title(pool, 1, "두 장면")
             assert (scenario["current_scene_index"], scenario["current_line_index"]) == (1, 0)
             stale_click = _make_interaction(user_id=100)
