@@ -101,7 +101,7 @@
 ### Task 5: 원인 재현 및 종합 검증 기록
 
 **Files:**
-- Create: `docs/playtests/yuripa-observatory/remediation/reproduction-and-root-causes.md`
+- Modify: `docs/playtests/yuripa-observatory/remediation/reproduction-and-root-causes.md`
 - Create: `docs/playtests/yuripa-observatory/remediation/verification-results.md`
 
 - [ ] 과거 실행의 재현 가능한 증거와 이번 자동화 테스트 결과를 분리한다.
