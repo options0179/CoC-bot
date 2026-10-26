@@ -19,7 +19,7 @@ INTENTS = discord.Intents.default()
 
 class InstrumentedCommandTree(app_commands.CommandTree):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        interaction._coc_started_at = time.monotonic()
+        interaction.extras["_coc_started_at"] = time.monotonic()
         command = getattr(interaction.command, "qualified_name", "unknown")
         logger.info(
             "Slash command received interaction_id=%s command=%s",
@@ -30,7 +30,7 @@ class InstrumentedCommandTree(app_commands.CommandTree):
 
 
 def _log_command_result(interaction: discord.Interaction, command: str, outcome: str) -> None:
-    started = getattr(interaction, "_coc_started_at", None)
+    started = interaction.extras.get("_coc_started_at")
     duration_ms = round((time.monotonic() - started) * 1000) if started is not None else -1
     acknowledged = interaction.response.is_done()
     logger.info(

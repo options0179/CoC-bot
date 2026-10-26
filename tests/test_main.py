@@ -11,6 +11,18 @@ import pytest
 import bot.main as main_module
 
 
+class _SlottedInteraction:
+    __slots__ = ("id", "extras", "command", "response", "followup", "data")
+
+    def __init__(self, *, id, command, data, response=None, followup=None):
+        self.id = id
+        self.extras = {}
+        self.command = command
+        self.response = response
+        self.followup = followup
+        self.data = data
+
+
 def test_main_raises_systemexit_without_token(monkeypatch):
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
     with pytest.raises(SystemExit):
@@ -131,7 +143,7 @@ def test_shutdown_attempts_discord_and_database_cleanup_when_web_cleanup_fails(m
 
 def test_command_tree_records_receipt_without_command_arguments(monkeypatch, caplog):
     caplog.set_level("INFO", logger="coc-bot")
-    interaction = SimpleNamespace(
+    interaction = _SlottedInteraction(
         id=12345,
         command=SimpleNamespace(qualified_name="행동"),
         data={"options": [{"value": "비밀 지문"}]},
@@ -140,20 +152,20 @@ def test_command_tree_records_receipt_without_command_arguments(monkeypatch, cap
     result = asyncio.run(main_module.bot.tree.interaction_check(interaction))
 
     assert result is True
-    assert isinstance(interaction._coc_started_at, float)
+    assert isinstance(interaction.extras["_coc_started_at"], float)
     assert "12345" in caplog.text and "행동" in caplog.text
     assert "비밀 지문" not in caplog.text
 
 
 def test_completion_log_has_duration_and_acknowledgement_without_arguments(monkeypatch, caplog):
     caplog.set_level("INFO", logger="coc-bot")
-    interaction = SimpleNamespace(
+    interaction = _SlottedInteraction(
         id=67890,
         command=SimpleNamespace(qualified_name="판정"),
         response=SimpleNamespace(is_done=lambda: True),
-        _coc_started_at=time.monotonic() - 0.2,
         data={"options": [{"value": "민감한 입력"}]},
     )
+    interaction.extras["_coc_started_at"] = time.monotonic() - 0.2
 
     asyncio.run(main_module.on_app_command_completion(interaction, interaction.command))
 
@@ -167,13 +179,14 @@ def test_app_command_error_logs_correlation_without_exception_text(caplog):
     from discord import app_commands
 
     caplog.set_level("INFO", logger="coc-bot")
-    interaction = SimpleNamespace(
+    interaction = _SlottedInteraction(
         id=24680,
         command=SimpleNamespace(qualified_name="시나리오조회"),
         response=SimpleNamespace(is_done=lambda: True),
         followup=AsyncMock(),
-        _coc_started_at=main_module.time.monotonic() - 0.01,
+        data={},
     )
+    interaction.extras["_coc_started_at"] = main_module.time.monotonic() - 0.01
 
     asyncio.run(main_module.on_app_command_error(
         interaction, app_commands.AppCommandError("private input and token")
