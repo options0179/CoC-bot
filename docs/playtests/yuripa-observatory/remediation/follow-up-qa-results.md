@@ -58,6 +58,7 @@ These baseline results are not final branch verification. After the implementati
 - Prior notes record a Gemini model request returning HTTP 404 for `gemini-2.5-flash`; a retry after changing model ID succeeded. This identifies a model-ID/provider endpoint mismatch for that request. A separate 503 is recorded without provider logs; its underlying cause is unknown.
 - Prior notes record a manual `/판정` roll whose callback failed after rolling because `view=None` was passed. That code path was fixed before this follow-up baseline. It is a previously identified application cause, distinct from provider failures.
 - In this QA attempt, using the system Python's `pytest` caused collection errors because dependencies were absent. Selecting the repository's existing Python 3.12 venv resolved it. This was tooling setup, not a product failure.
+- The parent agent's read-only connected Drive lookup found the native document `유리파 관측소 - 플레이테스트 시나리오`, but its `get_document_tables` result was `tables: []`. No document was edited or shared. This does not prove that the full document has no tables through every export route; it does explain why a live test rule cannot currently be sourced from the table lookup, and it leaves the parser fixture independent from a confirmed real export.
 - A Docker replacement previously ended the old container with exit 137 after the 30-second stop window. This QA agent did not inspect or mutate Docker. Exit 137 alone does not identify the blocked shutdown hook or signal handling cause.
 
 ## Final implementation verification
@@ -71,8 +72,8 @@ Pending the implementation agent's completion and branch synchronization.
 | Focused parser/narration/action tests after synchronization | Pending |
 | Full test suite after synchronization | Pending |
 | Actual Discord two-account vote | Not performed; external services are outside this QA agent's scope |
-| Real Google Docs export/provider call | Not performed; external services are outside this QA agent's scope |
-| Live Gemini scenario-aware `/행동` run | Not performed; would require external API and Discord |
+| Real Google Docs export/provider call | Not performed. Parent's read-only lookup of `유리파 관측소 - 플레이테스트 시나리오` returned `tables: []`; no doc was changed |
+| Live Gemini scenario-aware `/행동` run | Not performed; the connected scenario table lookup is empty and a live Discord/Gemini run is outside this QA agent's scope |
 | Graceful Docker shutdown and volume restart | Not performed by this QA agent |
 
 ## Remaining investigation proposals
