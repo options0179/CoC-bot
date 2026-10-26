@@ -1,6 +1,5 @@
 import aiohttp
 
-MAX_SHEET_BYTES = 10 * 1024 * 1024
 MAX_DOC_BYTES = 5 * 1024 * 1024
 
 
@@ -23,11 +22,6 @@ async def _fetch(url: str, max_bytes: int) -> bytes | None:
                     raise GoogleExportTooLarge
                 content.extend(chunk)
             return bytes(content)
-
-
-async def fetch_google_sheet(sheet_id: str) -> bytes | None:
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
-    return await _fetch(url, MAX_SHEET_BYTES)
 
 
 async def fetch_google_doc(doc_id: str) -> str | None:

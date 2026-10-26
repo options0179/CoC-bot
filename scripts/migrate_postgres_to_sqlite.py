@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import storage
 
 TABLES = ("scenarios", "characters", "scenario_participants")
-JSON_COLUMNS = {"skills", "structure"}
+JSON_COLUMNS = {"skills", "weapons", "structure"}
 
 
 def _sqlite_value(column: str, value):

@@ -2,8 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.embeds import sanity_embed
-from storage import resolve_sanity_check
+from bot.embeds import sanity_embed, status_badges
+from storage import get_pc_character, resolve_sanity_check
 
 
 class SanityCog(commands.Cog):
@@ -39,7 +39,10 @@ class SanityCog(commands.Cog):
             warnings.append("이번 손실이 직전 SAN의 1/5 이상 — 부정형 광기 위험")
         if result.remaining_san == 0:
             warnings.append("SAN 0 도달 — 영구적 광기로 퇴장 처리되었습니다")
-        await interaction.response.send_message(embed=sanity_embed(result, warnings))
+        character = await get_pc_character(self.pool, interaction.guild_id, interaction.user.id)
+        await interaction.response.send_message(
+            embed=sanity_embed(result, warnings, statuses=status_badges(character or {}))
+        )
 
 
 async def setup(bot: commands.Bot) -> None:

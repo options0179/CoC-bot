@@ -1,7 +1,7 @@
 import re
 from html.parser import HTMLParser
 
-from sheet_parser import SKILL_NAMES
+from skill_names import SKILL_NAMES
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 _BRACKET_RE = re.compile(r"「[^」]*」")

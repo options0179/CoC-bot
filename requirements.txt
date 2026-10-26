@@ -35,8 +35,6 @@ discord-py==2.7.1
     # via -r requirements.in
 distro==1.9.0
     # via google-genai
-et-xmlfile==2.0.0
-    # via openpyxl
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -61,8 +59,6 @@ multidict==7.1.0
     # via
     #   aiohttp
     #   yarl
-openpyxl==3.1.5
-    # via -r requirements.in
 propcache==0.5.4
     # via
     #   aiohttp

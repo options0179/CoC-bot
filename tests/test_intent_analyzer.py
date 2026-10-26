@@ -12,10 +12,10 @@ from intent_analyzer import (
     build_prompt,
     parse_intent_response,
 )
-from sheet_parser import SKILL_NAMES
+from skill_names import SKILL_NAMES
 
 
-def test_coc_skills_matches_sheet_parser_skill_names():
+def test_coc_skills_matches_shared_skill_names():
     assert set(COC_SKILLS) == SKILL_NAMES
 
 

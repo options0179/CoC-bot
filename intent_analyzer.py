@@ -2,7 +2,7 @@ import json
 import math
 from dataclasses import dataclass
 
-from sheet_parser import SKILL_NAMES
+from skill_names import SKILL_NAMES
 
 MODEL_NAME = "gemini-3.8-flash"
 

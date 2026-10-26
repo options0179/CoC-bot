@@ -74,6 +74,7 @@ def test_sanity_rejects_when_san_is_missing(monkeypatch):
 def test_sanity_uses_atomic_storage_operation(monkeypatch):
     resolve_mock = AsyncMock(return_value=("ok", _result()))
     monkeypatch.setattr("bot.cogs.sanity.resolve_sanity_check", resolve_mock)
+    monkeypatch.setattr("bot.cogs.sanity.get_pc_character", AsyncMock(return_value={}))
     cog = SanityCog(bot=_make_bot())
     interaction = _make_interaction()
 
@@ -89,6 +90,7 @@ def test_sanity_warns_on_loss_of_5_or_more(monkeypatch):
     monkeypatch.setattr(
         "bot.cogs.sanity.resolve_sanity_check", AsyncMock(return_value=("ok", _result(loss=5)))
     )
+    monkeypatch.setattr("bot.cogs.sanity.get_pc_character", AsyncMock(return_value={}))
     embed_mock = MagicMock()
     monkeypatch.setattr("bot.cogs.sanity.sanity_embed", embed_mock)
     cog = SanityCog(bot=_make_bot())
@@ -105,6 +107,7 @@ def test_sanity_warns_when_san_reaches_zero(monkeypatch):
         "bot.cogs.sanity.resolve_sanity_check",
         AsyncMock(return_value=("ok", _result(current_san=3, loss=3))),
     )
+    monkeypatch.setattr("bot.cogs.sanity.get_pc_character", AsyncMock(return_value={}))
     embed_mock = MagicMock()
     monkeypatch.setattr("bot.cogs.sanity.sanity_embed", embed_mock)
     cog = SanityCog(bot=_make_bot())

@@ -125,6 +125,56 @@ def test_character_embed_shows_hp_mp_san():
     assert vitals_field.value == "HP 11/11  MP 11/11  SAN 55/55"
 
 
+def test_character_embed_shows_player_when_recorded():
+    embed = character_embed(_sample_character(player="샬럿"), owner_name="탐사자")
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["플레이어"] == "샬럿"
+
+
+def test_character_embed_omits_player_field_when_unknown():
+    embed = character_embed(_sample_character(), owner_name="탐사자")
+    assert all(f.name != "플레이어" for f in embed.fields)
+
+
+def test_character_embed_lists_weapons():
+    character = _sample_character(
+        weapons=[{"name": "권총 .38", "damage": "1d10"}, {"name": "곤봉", "damage": "1d6+DB"}]
+    )
+    embed = character_embed(character, owner_name="탐사자")
+    fields = {f.name: f.value for f in embed.fields}
+    assert "권총 .38: 1d10" in fields["무기"]
+    assert "곤봉: 1d6+DB" in fields["무기"]
+
+
+def test_character_embed_omits_weapon_field_when_empty():
+    embed = character_embed(_sample_character(weapons=[]), owner_name="탐사자")
+    assert all(f.name != "무기" for f in embed.fields)
+
+
+def test_character_embed_shows_status_badges():
+    character = _sample_character(
+        major_wound=True, mp_depleted=True, temp_insanity=True, indefinite_insanity=True
+    )
+    embed = character_embed(character, owner_name="탐사자")
+    fields = {f.name: f.value for f in embed.fields}
+    assert "중상" in fields["상태"]
+    assert "MP 빈사" in fields["상태"]
+    assert "일시적 광기" in fields["상태"]
+    assert "부정형 광기" in fields["상태"]
+
+
+def test_character_embed_omits_status_field_when_all_clear():
+    embed = character_embed(_sample_character(), owner_name="탐사자")
+    assert all(f.name != "상태" for f in embed.fields)
+
+
+def test_sanity_embed_shows_status_field():
+    result = SanityResult(roll=80, current_san=50, success=False, loss=5, remaining_san=45)
+    embed = sanity_embed(result, warnings=[], statuses=["일시적 광기"])
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["상태"] == "일시적 광기"
+
+
 def test_character_embed_shows_retired_badge():
     embed = character_embed(_sample_character(is_retired=True), owner_name="탐사자")
     assert "퇴장" in embed.title

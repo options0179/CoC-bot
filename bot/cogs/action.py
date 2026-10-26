@@ -9,7 +9,7 @@ from discord.ext import commands
 from bot.embeds import check_embed, narration_embed
 from dice import is_success, roll_check
 from intent_analyzer import IntentResponseBlocked, IntentResponseEmpty, analyze_intent
-from sheet_parser import SKILL_NAMES
+from skill_names import SKILL_NAMES
 from storage import get_roster, get_scenario_by_channel, get_skill_value
 
 logger = logging.getLogger(__name__)

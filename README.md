@@ -2,8 +2,7 @@
 
 Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)을 자동화하는
 디스코드 슬래시 커맨드 봇. 판정 명령어 자체는 여전히 상태 없이(stateless) 그 자리에서
-계산만 하지만, 이제 캐릭터시트 등록/조회 기능도 지원한다 — 플레이어가 구글 스프레드시트
-링크로 캐릭터시트를 등록하면 SQLite 파일에 저장해두고 언제든 다시 조회할 수 있다.
+계산만 하지만, 이제 캐릭터시트 등록/조회 기능도 지원한다 — 플레이어가 일회용 웹 등록 폼으로 캐릭터를 등록하면 SQLite 파일에 저장해 언제든 다시 조회할 수 있다.
 
 ## 커맨드
 
@@ -11,16 +10,14 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 - `/산정 손실식` — 등록된 본인 캐릭터(PC)의 현재 SAN으로 SAN 체크를 굴리고 DB에 반영
   (손실식 예: `1/1d4+1`, 손실 5 이상/직전 SAN의 1/5 이상/SAN 0 도달 시 경고 표시, 0 도달 시 자동 퇴장 처리)
 - `/대립 내스킬 상대스킬` — 대립판정
-- `/캐릭터등록 링크:<구글 스프레드시트 URL>` — 링크 공개된 구글 스프레드시트 캐릭터시트를
-  가져와 등록(재등록 시 프로필·스킬을 갱신하고 현재 HP/MP/SAN은 보존)
+- /캐릭터등록 — 30분·1회용 웹 등록 폼 링크를 발급한다(재등록 시 프로필·스킬을 갱신하고 현재 HP/MP/SAN은 보존)
 - `/캐릭터조회 [유저]` — 등록된 캐릭터 조회 (생략 시 본인)
 - `/시나리오등록 제목 링크:<구글독스 URL>` — 링크 공개된 구글독스 시나리오 문서를 가져와
   아웃라인(부/장면/Keeper 낭독)을 파싱해 등록한다
 - `/시나리오시작 시나리오` — 현재 채널을 등록된 시나리오에 배정한다(그 시나리오의 키퍼만 가능)
 - `/시나리오참가` — 본인의 PC를 현재 채널에 배정된 시나리오의 참가자로 등록한다
 - `/시나리오조회` — 현재 채널에 배정된 시나리오의 진행 상황과 참가자를 보여준다
-- `/시나리오캐릭터등록 시나리오 직책:<KPC|NPC> 링크:<구글 스프레드시트 URL>` — 그 시나리오의
-  키퍼만 KPC/NPC 캐릭터시트를 등록할 수 있다(PC와 같은 양식)
+- /시나리오캐릭터등록 시나리오 직책:<KPC|NPC> — 시나리오의 키퍼만 30분·1회용 웹 등록 폼 링크를 발급할 수 있다
 - `/낭독시작` — 현재 채널 시나리오의 Keeper 낭독을 문장 단위로 출력하고, 등록된 PC와 키퍼의
   2/3 동의로 다음 문장으로 진행한다(KPC 대사는 자동화하지 않음)
 - `/행동 설명` — 자유 서술 행동을 분석해 필요하면 스킬 판정을 자동으로 굴린다 (판정이 필요 없으면 서술만 응답)
@@ -84,12 +81,11 @@ Discord 쪽 초기화 지연과 무관하게 통과하도록, cog 로드나 `tre
 CoC-Bot/
 ├── dice.py                      # CoC 7판 판정 로직 전체 (discord 비의존 순수 함수)
 ├── storage.py                    # SQLite 스키마 생성 + 캐릭터/시나리오 CRUD (표준 sqlite3)
-├── sheet_parser.py                # xlsx 캐릭터시트 파싱 (openpyxl)
 ├── scenario_parser.py             # 구글독스 export?format=html → 부/장면/Keeper 낭독 파싱 (표준 라이브러리 html.parser)
 ├── intent_analyzer.py             # 자유 서술 텍스트 → 플레이어 의도 분석 (Gemini)
 ├── bot/
 │   ├── main.py                  # 봇 엔트리포인트, DB 풀 생성, 헬스체크 서버 기동, cog 로더, 전역 에러 핸들러
-│   ├── web.py                    # Render 헬스체크용 aiohttp 루트·/health 엔드포인트
+│   ├── web.py                    # 캐릭터 등록 웹 폼 API 및 헬스체크 엔드포인트
 │   ├── embeds.py                # 판정/캐릭터/시나리오/낭독 결과 → 한국어 Discord 임베드 포맷
 │   └── cogs/
 │       ├── check.py             # /판정 커맨드 + PushView(재도전 버튼)
@@ -99,7 +95,7 @@ CoC-Bot/
 │       ├── scenario.py          # /시나리오등록, /시나리오시작, /시나리오조회 커맨드
 │       ├── narration.py         # /낭독시작 커맨드 + 참가자 2/3 투표 View
 │       └── action.py            # /행동 커맨드
-├── tests/                       # bot/, dice.py, storage.py, sheet_parser.py 구조를 그대로 미러링하는 pytest 테스트
+├── tests/                       # bot/, dice.py, storage.py, skill_names.py 구조를 그대로 미러링하는 pytest 테스트
 ├── requirements.in               # 봇 실행 의존성 직접 목록
 ├── requirements.txt              # 봇 실행 의존성 잠금 파일
 ├── requirements-dev.in           # 테스트 도구를 더한 개발 의존성 목록
@@ -120,19 +116,19 @@ CoC-Bot/
 | 경로 | 역할 |
 |---|---|
 | `dice.py` | d100 판정/성공등급, 보너스·페널티 주사위, 다이스 표기(`XdY+Z`) 파서, SAN 체크, 대립판정 — 판정 계산 로직 전부가 여기 있다. |
-| `storage.py` | SQLite 스키마(`characters`, `scenarios`, `scenario_participants`) 생성, 캐릭터 upsert/조회(PC/KPC/NPC 역할·시나리오 귀속 포함, SAN 갱신), 시나리오 CRUD·채널 배정·참가자 로스터·낭독 진행 위치 — DB 접근 전부가 여기 있다. |
-| `sheet_parser.py` | 업로드된 xlsx 캐릭터시트를 openpyxl로 읽어 라벨-값 쌍을 딕셔너리로 파싱, 형식이 잘못되면 `ValueError` (PC/KPC/NPC 공통 양식) |
+| `storage.py` | SQLite 스키마와 캐릭터·시나리오·참가자·등록 토큰 CRUD 및 SAN/광기 상태 갱신 |
+| skill_names.py | 웹 폼 자주 쓰는 기능 목록과 행동 판정 스킬 검증에서 공유하는 CoC 7판 스킬 이름 목록 |
 | `scenario_parser.py` | 구글독스 `export?format=html`을 `html.parser.HTMLParser`로 파싱해 h1(부)/h2(장면)/h3(소제목) 아웃라인을 읽고, "Keeper"로 시작하는 h3 구간의 본문만 문장 단위로 추출한다. 「」로 감싼 대사는 한 문장으로 유지 |
 | `intent_analyzer.py` | 플레이어의 자유 서술 텍스트를 Gemini로 분석해 `IntentResult`(행동 요약, 판정 필요 여부, 대상 스킬 등)로 변환 |
 | `docs/architecture/domain-workflows-and-scope.md` | 캐릭터 등록·시나리오 등록·시나리오 플레이 흐름도, 축소 결정과 검증 범위 |
 | `bot/__init__.py`, `bot/cogs/__init__.py` | 빈 패키지 초기화 파일 |
-| `bot/main.py` | `CoCBot`(discord.py `Bot` 서브클래스), 모듈 수준 `bot` 인스턴스, DB 풀 생성 + 헬스체크 서버 기동 + cog 로더(`setup_hook`), 전역 슬래시 커맨드 에러 핸들러, `main()` 진입점(토큰·DB URL 가드) |
-| `bot/web.py` | Render 상태 확인용 `/` 및 `/health` 응답만 제공하는 aiohttp 서버. `PORT` 환경변수가 있을 때만 기동한다 |
+| `bot/main.py` | Discord 봇 시작, SQLite 파일 준비, 헬스체크, cog 로드와 오류 처리 |
+| bot/web.py | 일회용 토큰을 검증해 캐릭터 등록 폼과 /health 응답을 제공하는 aiohttp 서버 |
 | `bot/embeds.py` | `CheckResult`/`SanityResult`/`OpposedResult`, 캐릭터(역할 배지 포함)/시나리오/Keeper 낭독 딕셔너리를 한국어 Discord 임베드로 포맷 |
 | `bot/cogs/check.py` | `/판정` 슬래시 커맨드, 판정 실패 시 붙는 `PushView`(푸시 롤 버튼) |
 | `bot/cogs/sanity.py` | `/산정` 슬래시 커맨드 |
 | `bot/cogs/opposed.py` | `/대립` 슬래시 커맨드 |
-| `bot/cogs/character.py` | 구글 스프레드시트 링크로 PC 등록(`defer()` 후 `aiohttp`로 xlsx export fetch → `asyncio.to_thread`로 파싱), 캐릭터 조회, `/시나리오캐릭터등록`(그 시나리오의 키퍼만 KPC/NPC 등록 가능) |
+| bot/cogs/character.py | 웹 폼 토큰 발급, 캐릭터 조회, 키퍼 전용 KPC/NPC 폼 발급 |
 | `bot/cogs/scenario.py` | `/시나리오등록`(구글독스 링크를 `aiohttp`로 fetch → `scenario_parser`로 파싱 → 저장), `/시나리오시작`(현재 채널 배정, 키퍼 전용), `/시나리오참가`(본인 PC를 로스터에 추가), `/시나리오조회` |
 | `bot/cogs/narration.py` | `/낭독시작` 슬래시 커맨드, Keeper와 참가 PC의 중복 없는 2/3 투표 및 DB 진행 위치 갱신 |
 | `bot/cogs/action.py` | `/행동` 슬래시 커맨드. 자유 서술을 `intent_analyzer.analyze_intent()`(`defer()` 후 `asyncio.to_thread`로 호출)로 분석해 판정이 필요 없으면 서술 임베드를, 필요하면 캐릭터 스킬값을 조회해 `dice.roll_check()`로 판정한다 |
@@ -144,9 +140,9 @@ CoC-Bot/
 | `tests/test_main.py` | 봇 엔트리포인트(토큰/DB URL 미설정 시 종료) 테스트 |
 | `tests/test_check_cog.py` / `test_sanity_cog.py` / `test_opposed_cog.py` / `test_character_cog.py` / `test_scenario_cog.py` / `test_narration_cog.py` | 각 슬래시 커맨드 cog 테스트 (Discord Interaction은 mock으로 대체) |
 | `tests/test_narration_view.py` | `NarrationView` 투표 권한, 중복 투표, 정족수, 오래된 진행 및 완료 처리 테스트 |
-| `tests/test_sheet_parser.py` | xlsx 파싱(정상/누락 라벨/숫자 아님/빈 이름/스킬) 테스트 |
+| `tests/test_skill_names.py` | 스킬 목록 공유 테스트 |
 | `tests/test_scenario_parser.py` | 구글독스 HTML 아웃라인 파싱, 문장 분리(대사 보존 포함) 테스트 |
-| `tests/test_storage_characters.py` / `test_storage_scenarios.py` | 임시 SQLite 파일로 `storage.py` 저장·조회 통합 테스트 |
+| `storage.py` | SQLite 스키마와 캐릭터·시나리오·참가자·등록 토큰 CRUD 및 SAN/광기 상태 갱신 |
 | `requirements.in` / `requirements-dev.in` | 직접 의존성 버전과 테스트 도구 목록 |
 | `requirements.txt` / `requirements-dev.txt` | 모든 하위 의존성까지 고정한 설치용 잠금 파일 |
 | `requirements-migrate.txt` / `scripts/migrate_postgres_to_sqlite.py` | 기존 PostgreSQL 데이터 이전 전용 도구와 의존성 |
@@ -171,7 +167,8 @@ pip install -r requirements.txt
 export DISCORD_TOKEN=발급받은_토큰
 export DATABASE_PATH=data/coc-bot.sqlite3
 # /행동을 사용할 때만 필요
-export GEMINI_API_KEY=발급받은_Gemini_API_키
+export DATABASE_PATH=./data/coc-bot.sqlite3  # 생략 가능
+export GEMINI_API_KEY=발급받은_Gemini_API_키  # /행동 사용 시 필요
 python -m bot.main
 ```
 

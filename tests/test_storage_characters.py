@@ -1,4 +1,6 @@
 import asyncio
+import json
+import sqlite3
 
 import pytest
 
@@ -53,6 +55,9 @@ SAMPLE_CHARACTER = {
     "cash": None,
     "assets": None,
     "skills": {"회계": 5, "심리학": 10},
+    "weapons": [],
+    "major_wound": False,
+    "mp_depleted": False,
 }
 
 
@@ -70,6 +75,8 @@ def test_upsert_then_get_roundtrips(run_db):
         assert result["name"] == "탐사자"
         assert result["int"] == 80
         assert result["skills"] == {"회계": 5, "심리학": 10}
+        assert result["weapons"] == []
+        assert result["major_wound"] is False
 
     run_db(_body)
 
@@ -295,3 +302,74 @@ def test_resolve_sanity_check_serializes_and_persists_both_losses(run_db):
         assert result["is_retired"] is False
 
     run_db(_body)
+
+
+def _sanity_result(current, loss):
+    from dice import SanityResult
+    return SanityResult(
+        roll=1, current_san=current, success=True, loss=loss, remaining_san=current - loss
+    )
+
+
+def test_resolve_sanity_check_latches_insanity_flags(run_db, monkeypatch):
+    from dice import SanityResult
+    import storage
+
+    losses = iter((5, 1))
+    monkeypatch.setattr(
+        storage,
+        "sanity_check",
+        lambda current, formula: _sanity_result(current, next(losses)),
+    )
+
+    async def _body(pool):
+        await upsert_character(
+            pool, guild_id=1, user_id=100,
+            data=dict(SAMPLE_CHARACTER, san_current=100, san_starting=100),
+        )
+        assert (await resolve_sanity_check(pool, 1, 100, "1/5"))[0] == "ok"
+        assert (await resolve_sanity_check(pool, 1, 100, "1/5"))[0] == "ok"
+        result = await get_pc_character(pool, 1, 100)
+        assert result["temp_insanity"] is True
+        assert result["indefinite_insanity"] is False
+
+    run_db(_body)
+
+
+def test_existing_sqlite_database_is_migrated_without_losing_character(tmp_path):
+    from storage import create_pool
+
+    path = tmp_path / "old.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript("""
+        CREATE TABLE characters (
+            id INTEGER PRIMARY KEY,
+            guild_id INTEGER NOT NULL,
+            discord_user_id INTEGER NOT NULL,
+            name TEXT,
+            skills TEXT NOT NULL DEFAULT '{}',
+            role TEXT NOT NULL DEFAULT 'PC',
+            scenario_id INTEGER,
+            is_retired INTEGER NOT NULL DEFAULT 0
+        );
+    """)
+    connection.execute(
+        "INSERT INTO characters (guild_id, discord_user_id, name, skills) VALUES (?, ?, ?, ?)",
+        (1, 100, "기존 캐릭터", json.dumps({"관찰력": 65}, ensure_ascii=False)),
+    )
+    connection.commit()
+    connection.close()
+
+    async def _run():
+        pool = await create_pool(str(path))
+        try:
+            result = await get_pc_character(pool, 1, 100)
+            assert result["name"] == "기존 캐릭터"
+            assert result["skills"] == {"관찰력": 65}
+            assert result["weapons"] == []
+            assert result["temp_insanity"] is False
+            assert result["indefinite_insanity"] is False
+        finally:
+            await pool.close()
+
+    asyncio.run(_run())
