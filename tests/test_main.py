@@ -1,6 +1,7 @@
 import asyncio
 import socket
 import re
+import signal
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -34,11 +35,49 @@ def test_main_starts_without_database_path_or_gemini_key(monkeypatch):
     monkeypatch.delenv("DATABASE_PATH", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     run = []
-    monkeypatch.setattr(main_module.bot, "run", run.append)
+
+    async def fake_run(token):
+        run.append(token)
+
+    monkeypatch.setattr(main_module, "_run_bot", fake_run)
 
     main_module.main()
 
     assert run == ["fake-token-for-test"]
+
+
+def test_sigterm_cancels_bot_start_and_runs_cleanup(monkeypatch):
+    async def _body():
+        bot = main_module.bot
+        loop = asyncio.get_running_loop()
+        handlers = {}
+        removed = []
+        monkeypatch.setattr(
+            loop,
+            "add_signal_handler",
+            lambda signum, callback: handlers.setdefault(signum, callback),
+        )
+        monkeypatch.setattr(
+            loop, "remove_signal_handler", lambda signum: removed.append(signum)
+        )
+        async def wait_for_connection(token):
+            await asyncio.Future()
+
+        start = AsyncMock(side_effect=wait_for_connection)
+        close = AsyncMock()
+        monkeypatch.setattr(bot, "start", start)
+        monkeypatch.setattr(bot, "close", close)
+
+        run_task = asyncio.create_task(main_module._run_bot("fake-token"))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        handlers[signal.SIGTERM]()
+        await run_task
+        start.assert_awaited_once_with("fake-token")
+        close.assert_awaited_once()
+        assert removed == [signal.SIGTERM]
+
+    asyncio.run(_body())
 
 
 def test_start_web_server_noop_without_port(monkeypatch):

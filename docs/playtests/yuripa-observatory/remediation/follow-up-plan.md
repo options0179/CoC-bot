@@ -20,11 +20,11 @@ All work lives in this follow-up branch. Keep the historical incident report unc
 
 ### 1. Make shutdown observable and finish every cleanup step
 
-**Problem/evidence:** Local Docker replacement waited 30 seconds and ended with exit 137. The old container logs were not saved, so the stalled step and the Oct 24 incident cause are unknown. `CoCBot.close()` currently cancels the self-ping task, cleans up the HTTP runner, closes SQLite, then closes Discord; an exception in an earlier cleanup can skip later cleanup.
+**Problem/evidence:** Local Docker replacement waited 30 seconds and ended with exit 137. On the follow-up image, repeated Docker stops also reached exit 137 without entering `CoCBot.close()`: the blocking `bot.run()` path had no application SIGTERM handler that routed termination through async cleanup. This explains the local reproduction; the old container logs and Oct 24 deployed revision are still unavailable. An exception in an earlier cleanup could also skip later cleanup.
 
-**Change:** Log entry, completion, elapsed milliseconds, and sanitized failure for each shutdown stage. Attempt Discord, web, and SQLite cleanup even if one stage raises, then raise a sanitized stage/type error so the process retains a non-zero failure signal. Do not include environment values or database contents.
+**Change:** Run `bot.start()` in the app event loop, cancel it on SIGTERM, and always call `CoCBot.close()` in `finally`. Log entry, completion, elapsed milliseconds, and sanitized failure for each shutdown stage. Attempt Discord, web, and SQLite cleanup even if one stage raises, then raise a sanitized stage/type error so the process retains a non-zero failure signal. Do not include environment values or database contents.
 
-**Acceptance evidence:** A test forces one cleanup stage to fail and proves the remaining stages still run; `close()` then raises a sanitized stage/type error without exposing exception text. Logs identify the stage and elapsed time. A local Docker stop exits 0 within the configured grace period and logs all completed stages. This diagnoses future stalls; it cannot retroactively establish why the removed container exited 137.
+**Acceptance evidence:** Unit tests prove SIGTERM cancels the running bot task and reaches cleanup, and that a failing cleanup stage does not prevent later stages. Docker stop on the rebuilt local image exited 0 in under one second with web, database, and Discord cleanup logs. The prior 137 reproduction is explained by missing SIGTERM routing in the old blocking entry point; Oct 24's separate cause still cannot be retroactively established without that deployment's logs/revision.
 
 ### 2. Add content-free slash-command timing
 
@@ -70,10 +70,10 @@ All work lives in this follow-up branch. Keep the historical incident report unc
 
 | Requirement | Automated/local evidence | Live/host-dependent evidence |
 |---|---|---|
-| Cleanup continues after a failure | unit test with failing fake cleanup | Docker SIGTERM stop within 30 seconds, exit 0 |
+| Cleanup continues after a failure | SIGTERM handler and failing-cleanup unit tests | Docker SIGTERM stop under 1 second, exit 0; logs show all three cleanup stages |
 | Interaction is diagnosable without content | tests of receive/completion/error logs and redaction | recurrence needed to diagnose Discord-side delivery/latency |
 | 404 is distinct, bounded, no retry | tests with fake provider exception | real provider model availability is not asserted |
-| External named-volume config is warning-free | Compose config passed; Docker reports the existing volume name | replacement container mount and SQLite before/after comparison |
+| External named-volume config is warning-free | Compose config passed without warning | replacement container mounted `coc-bot-data:/app/data`; SQLite integrity was `ok`, and both scenario rows/positions matched the pre-restart snapshot |
 | Docs parser and action mapping | tests over isolated HTML/check fixtures and mocked provider output | fresh live Google export and Discord run only if safely staged |
 | Two-account narration quorum | unit tests with distinct users | second Discord account required for live proof |
 | Historical Oct 24 root cause | not verifiable from retained artifacts | requires old process revision/logs, which were unavailable |
@@ -82,14 +82,14 @@ All work lives in this follow-up branch. Keep the historical incident report unc
 
 | Item | Current result |
 |---|---|
-| Shutdown continues after cleanup error | Unit test passed; web, SQLite, and Discord cleanup were all awaited, then a sanitized `RuntimeError` was raised. |
+| Shutdown and SIGTERM | SIGTERM unit test and failing-cleanup test passed. The first local SIGTERM reproduced exit 137 without cleanup logs; after explicit signal routing, Docker stop exited 0 in under one second and logged all three cleanup stages. |
 | Interaction diagnostics | Unit tests passed for receipt, successful completion, failed command, acknowledgement state, duration, and argument redaction. The duration is total command duration, not first-ack latency. |
 | Gemini 404 | Unit test passed for a distinct bounded model error; the analyzer was called once and exception text was absent from logs and user response. |
-| Compose volume declaration | `docker compose config -q` passed with the existing `coc-bot-data` external volume present; no volume ownership warning was emitted. The replacement container was not started, so its mount was not inspected. |
-| Full suite | `222 passed, 1 warning`; the warning is the dependency's `audioop` deprecation. |
+| Compose volume declaration | `docker compose config -q` passed without a volume warning; the rebuilt container mounted `coc-bot-data:/app/data`. A pre-replacement SQLite backup and the running database both passed `PRAGMA integrity_check`; both scenario rows, channel IDs, and positions matched. |
+| Full suite before QA additions | `223 passed, 1 warning`; the warning is the dependency's `audioop` deprecation. |
 
-The running `coc-bot` container was not stopped or replaced from this worktree because it is shared with the existing playtest channel. Therefore this change has no new Docker SIGTERM/exit-code-0 runtime evidence and does not claim to have fixed the historical exit 137. The local app-command and storage state remain untouched.
+The original exit-137 behavior was reproduced before the signal fix, then resolved and verified against the rebuilt image using the existing data volume. The pre-replacement database backup is at `/tmp/coc-bot-before-followup.sqlite3`; no scenario or character data was changed by the runtime check.
 
 ## Evidence limits
 
-The historical Oct 24 root cause cannot be reconstructed without that deployed process/revision or its logs. A second-user live quorum cannot be proven without a second eligible Discord identity. These limits do not prevent isolated parser/action/quorum regression tests. The native Google Doc and completed Discord scenario remain untouched; use a fresh fixture/channel for live validation.
+The Oct 24 incident cause cannot be reconstructed without that deployed process/revision or its logs, even though the local exit-137 reproduction is now fixed. A second-user live quorum cannot be proven without a second eligible Discord identity. These limits do not prevent isolated parser/action/quorum regression tests. The native Google Doc and completed Discord scenario remain untouched; use a fresh fixture/channel for live validation.

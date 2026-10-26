@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+import signal
 import time
 
 import aiohttp
@@ -156,7 +158,20 @@ def main() -> None:
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         raise SystemExit("DISCORD_TOKEN 환경변수가 설정되지 않았습니다.")
-    bot.run(token)
+    asyncio.run(_run_bot(token))
+
+
+async def _run_bot(token: str) -> None:
+    loop = asyncio.get_running_loop()
+    task = asyncio.create_task(bot.start(token))
+    loop.add_signal_handler(signal.SIGTERM, task.cancel)
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    finally:
+        loop.remove_signal_handler(signal.SIGTERM)
+        await bot.close()
 
 
 if __name__ == "__main__":
