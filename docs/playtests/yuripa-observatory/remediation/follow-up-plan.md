@@ -4,7 +4,7 @@ This plan addresses only issues still actionable from `reproduction-and-root-cau
 
 ## Work ownership and evidence layout
 
-All work lives in this follow-up branch. Keep the historical incident report unchanged. This plan records scope and acceptance evidence; automated test results and local runtime commands belong in the final implementation notes/commit message. Do not save tokens, prompt text, player actions, Discord usernames, or message content in evidence.
+Implementation lives in the `CoC-Bot-followup` worktree on `fix/playtest-followup`; independent QA lives in the separate `CoC-Bot-followup-qa` worktree on `review/playtest-followup-evidence`. The QA branch contains its own tests and result notes, which are copied into the implementation branch after review. Keep the historical incident report unchanged. Do not save tokens, prompt text, player actions, Discord usernames, or message content in evidence.
 
 | Work area | Owner | Files | Commit boundary |
 |---|---|---|---|
