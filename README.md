@@ -200,12 +200,13 @@ Compose 컨테이너를 시작할 수 있다. 컨테이너 제거는 `coc-bot-da
 이 절차를 실행하지 않는다. 이전 대상 볼륨이 비어 있을 때만, 기존 봇을 완전히 중지한 뒤
 아래 명령을 실행한다. `sqlite3.Connection.backup()`으로 DB의 일관된 스냅샷을 만들며,
 실행 중인 DB 파일이나 WAL 파일을 직접 복사하지 않는다. `./data`가 아닌 경로를 썼다면
-`$PWD/data`를 해당 절대 경로로 바꾼다.
+`$PWD/data`를 해당 절대 경로로 바꾼다. 원본은 봇을 중지한 동안에만 쓰기 가능으로
+마운트한다. WAL 모드의 DB에 `-shm` 파일이 없으면 SQLite가 이 파일을 만들어야 할 수 있다.
 
 ```bash
 docker run --rm -i \
   -v coc-bot-data:/app/data \
-  -v "$PWD/data:/old-data:ro" \
+  -v "$PWD/data:/old-data" \
   python:3.12-slim python - <<'PY'
 from contextlib import closing
 from pathlib import Path
@@ -228,24 +229,37 @@ print('SQLite 백업 및 무결성 검사 완료')
 PY
 ```
 
-이전 후 `docker compose up --build -d`로 시작한다. 저장 상태와 무결성은 봇을
-중지한 상태에서 아래처럼 확인할 수 있다. `integrity_check`가 `ok`여야 한다.
-낭독 위치(`current_scene_index`, `current_line_index`)를 기록한 다음
-`docker compose down`과 `docker compose up -d`를 실행하고 다시 조회해 같은 값인지
-확인하면 재시작 뒤에도 진행 상태가 보존되는지 검증할 수 있다.
+이전 후 `docker compose up --build -d`로 시작한다. 아래 명령은 봇을 내린 뒤
+DB 무결성과 낭독 위치를 읽고, 다시 올린 뒤 같은 쿼리를 실행해 결과를 비교한다.
+`integrity_check`가 `ok`가 아니면 즉시 실패한다. 검증하는 동안에는 Discord에서
+시나리오 진행 명령을 실행하지 않는다.
 
 ```bash
-docker compose down
-docker run --rm -i -v coc-bot-data:/app/data python:3.12-slim python - <<'PY'
+db_state() {
+  docker run --rm -i -v coc-bot-data:/app/data python:3.12-slim python - <<'PY'
 from contextlib import closing
 import sqlite3
 
 with closing(sqlite3.connect('file:/app/data/coc-bot.sqlite3?mode=ro', uri=True)) as db:
-    print('integrity_check:', db.execute('PRAGMA integrity_check').fetchone()[0])
-    for row in db.execute('SELECT id, current_scene_index, current_line_index FROM scenarios ORDER BY id'):
-        print('scenario position:', *row)
+    result = db.execute('PRAGMA integrity_check').fetchone()[0]
+    if result != 'ok':
+        raise SystemExit(f'integrity_check: {result}')
+    print('integrity_check: ok')
+    rows = db.execute('SELECT id, current_scene_index, current_line_index FROM scenarios ORDER BY id').fetchall()
+    print('scenario positions:', rows)
 PY
-docker compose up -d
+}
+if docker compose down && before="$(db_state)" && docker compose up -d && after="$(db_state)"; then
+  if [ "$before" = "$after" ]; then
+    printf '재시작 전후 DB 상태가 같습니다.\n%s\n' "$after"
+  else
+    printf '재시작 전후 DB 상태가 다릅니다.\n이전: %s\n이후: %s\n' "$before" "$after"
+    false
+  fi
+else
+  printf '컨테이너 재시작 또는 DB 조회에 실패했습니다.\n'
+  false
+fi
 ```
 
 ## 저비용 호스팅
