@@ -185,13 +185,15 @@ python -m bot.main
 ```bash
 cp .env.example .env
 # .env의 DISCORD_TOKEN을 채우고, /행동을 쓸 경우 GEMINI_API_KEY도 채운다.
+docker volume create coc-bot-data
 docker compose config -q
 docker compose up --build -d
 curl -fsS http://127.0.0.1:18080/health
 ```
 
-Compose의 `coc-bot-data` 이름은 고정되어 있다. 이 이름의 Docker 볼륨이 이미 있으면
-그 안의 DB를 그대로 사용하며, 새 호스트에서 처음 실행하면 빈 볼륨을 만든다.
+Compose는 이름이 고정된 외부 Docker 볼륨 `coc-bot-data`를 사용한다. 기존 볼륨이 있으면
+그 안의 DB를 그대로 사용한다. 새 호스트에서는 위 명령으로 볼륨을 먼저 만든다.
+
 `docker compose down`은 볼륨을 남긴다. 데이터를 보존하려면 `down -v`를 실행하지 않는다.
 기존에 수동으로 실행한 `coc-bot` 컨테이너가 있으면 먼저 중지하고 제거해야 동일 이름의
 Compose 컨테이너를 시작할 수 있다. 컨테이너 제거는 `coc-bot-data` 볼륨을 삭제하지 않는다.

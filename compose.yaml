@@ -16,3 +16,4 @@ services:
 volumes:
   bot-data:
     name: coc-bot-data
+    external: true
