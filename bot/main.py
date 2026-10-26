@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import aiohttp
 import discord
@@ -16,9 +17,40 @@ logger = logging.getLogger("coc-bot")
 INTENTS = discord.Intents.default()
 
 
+class InstrumentedCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        interaction._coc_started_at = time.monotonic()
+        command = getattr(interaction.command, "qualified_name", "unknown")
+        logger.info(
+            "Slash command received interaction_id=%s command=%s",
+            interaction.id,
+            command,
+        )
+        return True
+
+
+def _log_command_result(interaction: discord.Interaction, command: str, outcome: str) -> None:
+    started = getattr(interaction, "_coc_started_at", None)
+    duration_ms = round((time.monotonic() - started) * 1000) if started is not None else -1
+    acknowledged = interaction.response.is_done()
+    logger.info(
+        "Slash command %s interaction_id=%s command=%s command_duration_ms=%s "
+        "acknowledged_at_completion=%s",
+        outcome,
+        interaction.id,
+        command,
+        duration_ms,
+        acknowledged,
+    )
+
+
 class CoCBot(commands.Bot):
     def __init__(self) -> None:
-        super().__init__(command_prefix="!coc-unused!", intents=INTENTS)
+        super().__init__(
+            command_prefix="!coc-unused!",
+            intents=INTENTS,
+            tree_cls=InstrumentedCommandTree,
+        )
         self.pool = None
         self._web_runner: web.AppRunner | None = None
 
@@ -51,12 +83,38 @@ class CoCBot(commands.Bot):
         await site.start()
 
     async def close(self) -> None:
+        logger.info("Shutdown started")
         self._self_ping.cancel()
+        steps = []
         if self._web_runner is not None:
-            await self._web_runner.cleanup()
+            steps.append(("web", self._web_runner.cleanup))
         if self.pool is not None:
-            await self.pool.close()
-        await super().close()
+            steps.append(("database", self.pool.close))
+        steps.append(("discord", super().close))
+        first_failure = None
+        for name, cleanup in steps:
+            started = time.monotonic()
+            logger.info("Shutdown step started step=%s", name)
+            try:
+                await cleanup()
+            except Exception as exc:
+                if first_failure is None:
+                    first_failure = f"{name} shutdown failed ({type(exc).__name__})"
+                logger.error(
+                    "Shutdown step failed step=%s duration_ms=%s error_type=%s",
+                    name,
+                    round((time.monotonic() - started) * 1000),
+                    type(exc).__name__,
+                )
+            else:
+                logger.info(
+                    "Shutdown step complete step=%s duration_ms=%s",
+                    name,
+                    round((time.monotonic() - started) * 1000),
+                )
+        logger.info("Shutdown complete failures=%s", first_failure is not None)
+        if first_failure is not None:
+            raise RuntimeError(first_failure) from None
 
     @tasks.loop(minutes=10)
     async def _self_ping(self) -> None:
@@ -76,13 +134,22 @@ bot = CoCBot()
 async def on_app_command_error(
     interaction: discord.Interaction, error: app_commands.AppCommandError
 ) -> None:
-    logger.exception("Slash command error", exc_info=error)
+    command = getattr(interaction.command, "qualified_name", "unknown")
+    _log_command_result(interaction, command, "failed")
+    logger.error("Slash command exception_type=%s", type(error).__name__)
     original = getattr(error, "original", error)
     message = str(original) if isinstance(original, ValueError) else "명령어 처리 중 오류가 발생했습니다."
     if interaction.response.is_done():
         await interaction.followup.send(message, ephemeral=True)
     else:
         await interaction.response.send_message(message, ephemeral=True)
+
+
+@bot.listen("app_command_completion")
+async def on_app_command_completion(
+    interaction: discord.Interaction, command: app_commands.Command
+) -> None:
+    _log_command_result(interaction, command.qualified_name, "completed")
 
 
 def main() -> None:
