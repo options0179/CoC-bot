@@ -66,7 +66,14 @@ def test_action_uses_current_scene_rule_and_registered_skill(monkeypatch):
     assert any("문서를 발견한다" in field.value for field in embed.fields)
 
 
-def test_google_docs_check_flows_through_action_to_matching_skill_and_story_branch(monkeypatch):
+@pytest.mark.parametrize(
+    "level,roll_value,branch_text",
+    [(SuccessLevel.HARD, 21, "숨소리를 듣는다."),
+     (SuccessLevel.FAIL, 84, "발소리를 들킨다.")],
+)
+def test_google_docs_check_flows_through_action_to_matching_skill_and_story_branch(
+    monkeypatch, level, roll_value, branch_text
+):
     html = """
     <h1>유리파 관측소</h1><h2>장면 1: 잠긴 문</h2>
     <h3>Keeper 낭독</h3><p>문틈으로 불빛이 샌다.</p>
@@ -80,7 +87,7 @@ def test_google_docs_check_flows_through_action_to_matching_skill_and_story_bran
     scenario = {**SCENARIO, "title": "유리파 관측소", "structure": parsed}
     intent = _intent(check_id="door-listen", skill="관찰력")
     _, _, get_skill, analyze, roll = _setup(monkeypatch, scenario=scenario, intent=intent, skill=72)
-    roll.return_value = CheckResult(roll=21, skill=72, level=SuccessLevel.HARD)
+    roll.return_value = CheckResult(roll=roll_value, skill=72, level=level)
 
     interaction = _run()
 
@@ -90,7 +97,7 @@ def test_google_docs_check_flows_through_action_to_matching_skill_and_story_bran
     roll.assert_called_once_with(72)
     embed = interaction.followup.send.call_args.kwargs["embed"]
     assert embed.title == "관찰력 판정"
-    assert any("숨소리를 듣는다." in field.value for field in embed.fields)
+    assert any(branch_text in field.value for field in embed.fields)
 
 
 def test_action_rolls_registered_rule_even_when_model_says_no_roll(monkeypatch):

@@ -2,7 +2,7 @@
 
 Date: 2026-10-26  
 QA branch: `review/playtest-followup-evidence`  
-Implementation branch under review: `fix/playtest-followup`
+Implementation branch under review: `fix/playtest-followup` (`55b5d6b`, `110b88c`, `84ebbc9`, `6113d34`)
 
 This report is maintained in an isolated QA worktree. It records test evidence only; it does not change the implementation worktree or call Discord, Google, Gemini, Docker, or production services.
 
@@ -49,7 +49,7 @@ Full suite on the same baseline implementation revision before integration:
 
 The one warning is `DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13`, imported by the installed Discord voice module. It did not fail a test.
 
-These baseline results are not final branch verification. After the implementation agent completes, this QA branch must include its final implementation commits and the full suite must run again here. Results from that run belong below.
+The implementation branch was subsequently rebased into this QA branch. The final combined results are below.
 
 ## Cause findings and unresolved observations
 
@@ -63,17 +63,33 @@ These baseline results are not final branch verification. After the implementati
 
 ## Final implementation verification
 
-Pending the implementation agent's completion and branch synchronization.
+Implementation commits synchronized into this isolated QA branch by rebasing the two QA commits onto `fix/playtest-followup`; no implementation files were changed in the QA worktree. An additional parameterized end-to-end fixture case checks both success and failure branches.
+
+Focused verification:
+
+```text
+/tmp/coc-bot-local-test-venv/bin/pytest -q tests/test_scenario_parser.py tests/test_narration_cog.py tests/test_action_cog.py tests/test_main.py
+65 passed, 1 warning in 0.53s
+```
+
+Full suite:
+
+```text
+/tmp/coc-bot-local-test-venv/bin/pytest -q
+226 passed, 1 warning in 0.85s
+```
+
+The one warning remains the Discord dependency's `audioop` deprecation. `git diff --check 5a698c8..fix/playtest-followup` also exited successfully. Source review found no player text, provider exception text, or credentials in the new runtime log fields. Runtime diagnostics record interaction ID, command name, elapsed time, outcome, acknowledgement-at-completion, and exception type; tests check redaction with sentinel inputs. The Gemini 404 message is bounded and analyzer invocation remains one attempt. Shutdown attempts web, database, and Discord cleanup in sequence even if one raises, and exposes only cleanup stage plus exception type.
 
 | Evidence | Status |
 |---|---|
-| Implementation branch plan and scope reviewed | Pending |
-| Final implementation commit(s) synchronized into this QA worktree | Pending |
-| Focused parser/narration/action tests after synchronization | Pending |
-| Full test suite after synchronization | Pending |
+| Implementation branch plan and scope reviewed | Complete: `follow-up-plan.md`, including acceptance criteria and explicit historical/live evidence limits |
+| Final implementation commit(s) synchronized into this QA worktree | Complete: implementation commits `55b5d6b`, `110b88c`, `84ebbc9`, `6113d34`; QA commits rebased on top |
+| Focused parser/narration/action/shutdown tests after synchronization | 65 passed; see command above |
+| Full test suite after synchronization | 226 passed; see command above |
 | Actual Discord two-account vote | Not performed; external services are outside this QA agent's scope |
 | Real Google Docs export/provider call | Not performed. Parent's read-only lookup of `유리파 관측소 - 플레이테스트 시나리오` returned `tables: []`; no doc was changed |
-| Live Gemini scenario-aware `/행동` run | Not performed; the connected scenario table lookup is empty and a live Discord/Gemini run is outside this QA agent's scope |
+| Live Gemini scenario-aware `/행동` run | Not performed; the connected scenario table lookup is empty and live Discord/Gemini access is outside this QA agent's scope |
 | Graceful Docker shutdown and volume restart | Not performed by this QA agent |
 
 ## Remaining investigation proposals
@@ -83,3 +99,11 @@ Pending the implementation agent's completion and branch synchronization.
 3. In the dedicated test server, run two accounts through the same narration control: one vote must leave the saved line unchanged and the second must advance it. The local unit case proves the callback logic in isolation, not Discord delivery or permission behavior.
 4. Export a fresh Google Docs fixture and compare its table shape against the checked nested HTML case. This QA did not access Google or prove provider export output.
 5. Register a scenario containing one valid check and run `/행동` once on an action that should succeed and once on one that should fail. Capture registered skill, roll, selected story branch, response timing, and sanitized Gemini error details. This QA did not use a Gemini key or make live calls.
+
+## Implementation review notes
+
+- The follow-up implementation adds per-stage shutdown completion/error logs and continues cleanup after a stage exception. The fake-cleanup regression test proves later cleanup functions are awaited. No Docker stop was run from this QA worktree, so graceful shutdown at runtime and the old exit 137 cause remain unverified.
+- Slash-command logs use command names and interaction IDs for correlation and do not include interaction arguments. The tests exercise receipt, successful completion, and error logging with sentinel arguments. The recorded time is total command duration and acknowledgement state at completion; it does not measure exact first-ack latency. It supports diagnosing a future stall after receipt but cannot establish Discord-side delivery for old events.
+- Gemini 404 now receives a distinct bounded Korean response and category. The test confirms no retry and no exception content in the response or log. Real model availability is not claimed.
+- Compose declares `coc-bot-data` external and the README creates it before a clean-host startup. The implementation report records `docker compose config -q` success and no ownership warning with the existing volume. This QA agent did not start/restart Docker or inspect a container mount; persistence remains supported by prior evidence only.
+- The native Drive document lookup returned no tables, so the new nested HTML fixture demonstrates parser behavior without confirming Google's live export serialization.
