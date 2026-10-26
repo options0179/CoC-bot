@@ -140,7 +140,7 @@ def test_analyze_intent_uses_injected_model_and_parses_response():
     result = analyze_intent("복도로 걸어간다", "어두운 복도", model=fake_client)
 
     fake_client.models.generate_content.assert_called_once_with(
-        model="gemini-2.5-flash",
+        model="gemini-3.8-flash",
         contents="[현재 장면]\n어두운 복도\n\n[플레이어 입력]\n복도로 걸어간다\n\n"
         "플레이어의 행동을 분석해 요청된 JSON 스키마로만 응답하라. "
         "target_skill은 반드시 주어진 목록 중 하나여야 하며, "

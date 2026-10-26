@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from sheet_parser import SKILL_NAMES
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.8-flash"
 
 COC_SKILLS = sorted(SKILL_NAMES)
 
