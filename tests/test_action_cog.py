@@ -214,3 +214,19 @@ def test_action_reports_missing_key_without_analysis(monkeypatch):
     interaction = _run()
     interaction.response.send_message.assert_awaited_once()
     analyze.assert_not_called()
+
+
+def test_action_classifies_model_not_found_without_retry(monkeypatch, caplog):
+    class ProviderError(Exception):
+        code = 404
+
+    _, _, _, analyze, roll = _setup(monkeypatch)
+    analyze.side_effect = ProviderError("secret request content")
+    interaction = _run()
+
+    message = interaction.followup.send.call_args.args[0]
+    assert "모델" in message and "확인" in message
+    assert "secret" not in message and "secret" not in caplog.text
+    assert "model_not_found" in caplog.text
+    assert analyze.call_count == 1
+    roll.assert_not_called()

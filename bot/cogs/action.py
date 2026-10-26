@@ -27,6 +27,8 @@ def _analysis_error_message(exc: Exception) -> tuple[str, str]:
     code = getattr(exc, "code", None)
     if code in (401, 403):
         return "auth", "Gemini 인증 또는 권한을 확인해야 합니다. 관리자에게 알려 주세요."
+    if code == 404:
+        return "model_not_found", "Gemini 모델을 사용할 수 없습니다. 모델 이름과 API 접근 권한을 확인해 주세요."
     if code == 429:
         return "rate_limit", "Gemini 요청 제한에 도달했습니다. 잠시 후 다시 시도해 주세요."
     if isinstance(code, int) and 500 <= code < 600:
