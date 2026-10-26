@@ -25,7 +25,11 @@ class CharacterCog(commands.Cog):
     @app_commands.guild_only()
     async def register(self, interaction: discord.Interaction) -> None:
         token = await create_registration_token(
-            self.pool, interaction.guild_id, interaction.user.id, role="PC"
+            self.pool,
+            interaction.guild_id,
+            interaction.user.id,
+            role="PC",
+            player_name=interaction.user.display_name,
         )
         url = _build_registration_url(token)
         await interaction.response.send_message(
@@ -84,6 +88,7 @@ class CharacterCog(commands.Cog):
             interaction.user.id,
             role=직책.value,
             scenario_id=scenario["id"],
+            player_name=interaction.user.display_name,
         )
         url = _build_registration_url(token)
         await interaction.response.send_message(

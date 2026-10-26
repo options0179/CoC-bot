@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 from bot.cogs.character import CharacterCog, _build_registration_url
 
 
-def _make_interaction(guild_id=1, user_id=100):
+def _make_interaction(guild_id=1, user_id=100, display_name="샬럿"):
     interaction = MagicMock()
     interaction.response = AsyncMock()
     interaction.followup = AsyncMock()
     interaction.guild_id = guild_id
-    interaction.user = MagicMock(id=user_id)
+    interaction.user = MagicMock(id=user_id, display_name=display_name)
     return interaction
 
 
@@ -39,11 +39,14 @@ def test_register_issues_token_link(monkeypatch):
 
     asyncio.run(cog.register.callback(cog, interaction))
 
-    token_mock.assert_awaited_once_with(cog.pool, interaction.guild_id, interaction.user.id, role="PC")
+    token_mock.assert_awaited_once_with(
+        cog.pool, interaction.guild_id, interaction.user.id, role="PC", player_name="샬럿"
+    )
     interaction.response.send_message.assert_awaited_once()
     args, kwargs = interaction.response.send_message.call_args
     assert "https://coc-bot.onrender.com/register/tok123" in args[0]
     assert kwargs["ephemeral"] is True
+    interaction.response.defer.assert_not_awaited()
 
 
 def test_lookup_reports_missing_character(monkeypatch):
@@ -142,9 +145,11 @@ def test_register_scenario_character_issues_token_link(monkeypatch):
     )
 
     token_mock.assert_awaited_once_with(
-        cog.pool, interaction.guild_id, interaction.user.id, role="NPC", scenario_id=7
+        cog.pool, interaction.guild_id, interaction.user.id, role="NPC", scenario_id=7,
+        player_name="샬럿",
     )
     interaction.response.send_message.assert_awaited_once()
     args, kwargs = interaction.response.send_message.call_args
     assert "https://coc-bot.onrender.com/register/tok456" in args[0]
     assert kwargs["ephemeral"] is True
+    interaction.response.defer.assert_not_awaited()

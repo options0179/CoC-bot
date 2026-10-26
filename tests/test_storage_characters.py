@@ -84,6 +84,109 @@ def test_upsert_then_get_roundtrips(run_db):
     run_db(_body)
 
 
+def test_upsert_stores_player(run_db):
+    async def _body(pool):
+        await upsert_character(
+            pool, guild_id=1, user_id=100, data=dict(SAMPLE_CHARACTER, player="샬럿")
+        )
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["player"] == "샬럿"
+
+    run_db(_body)
+
+
+def test_upsert_stores_manual_status_flags(run_db):
+    async def _body(pool):
+        await upsert_character(
+            pool,
+            guild_id=1,
+            user_id=100,
+            data=dict(SAMPLE_CHARACTER, major_wound=True, mp_depleted=True),
+        )
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["major_wound"] is True
+        assert result["mp_depleted"] is True
+
+    run_db(_body)
+
+
+def test_upsert_defaults_status_flags_to_false(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["major_wound"] is False
+        assert result["mp_depleted"] is False
+        assert result["temp_insanity"] is False
+        assert result["indefinite_insanity"] is False
+
+    run_db(_body)
+
+
+def test_update_san_current_writes_insanity_flags(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        await update_san_current(
+            pool,
+            guild_id=1,
+            user_id=100,
+            new_san=40,
+            temp_insanity=True,
+            indefinite_insanity=True,
+        )
+        result = await get_pc_character(pool, guild_id=1, user_id=100)
+        assert result["temp_insanity"] is True
+        assert result["indefinite_insanity"] is True
+
+    run_db(_body)
+
+
+def test_update_san_current_latches_insanity_flags(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        await update_san_current(
+            pool, guild_id=1, user_id=100, new_san=40, temp_insanity=True
+        )
+        # 이후 손실이 작아 이번엔 광기 조건을 만족하지 않아도 기존 상태는 유지된다.
+        await update_san_current(
+            pool, guild_id=1, user_id=100, new_san=39, temp_insanity=False
+        )
+        result = await get_pc_character(pool, guild_id=1, user_id=100)
+        assert result["temp_insanity"] is True
+
+    run_db(_body)
+
+
+def test_upsert_roundtrips_weapons(run_db):
+    async def _body(pool):
+        weapons = [
+            {
+                "name": "권총 .38",
+                "skill": "권총",
+                "damage": "1d10",
+                "range": "15m",
+                "attacks": "1(3)",
+                "ammo": "6",
+                "malfunction": "100",
+            }
+        ]
+        await upsert_character(
+            pool, guild_id=1, user_id=100, data=dict(SAMPLE_CHARACTER, weapons=weapons)
+        )
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["weapons"] == weapons
+
+    run_db(_body)
+
+
+def test_upsert_defaults_weapons_to_empty_list(run_db):
+    async def _body(pool):
+        await upsert_character(pool, guild_id=1, user_id=100, data=SAMPLE_CHARACTER)
+        result = await get_character(pool, guild_id=1, user_id=100)
+        assert result["weapons"] == []
+
+    run_db(_body)
+
+
 def test_upsert_stores_cash_and_assets_as_free_text(run_db):
     async def _body(pool):
         data = dict(

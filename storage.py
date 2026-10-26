@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS scenarios (
     UNIQUE (channel_id)
 );
 
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS player TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS weapons JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS major_wound BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS mp_depleted BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS temp_insanity BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS indefinite_insanity BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'PC';
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS scenario_id INTEGER REFERENCES scenarios(id);
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS is_retired BOOLEAN NOT NULL DEFAULT false;
@@ -80,6 +86,8 @@ CREATE TABLE IF NOT EXISTS registration_tokens (
     expires_at TIMESTAMPTZ NOT NULL,
     used_at TIMESTAMPTZ
 );
+
+ALTER TABLE registration_tokens ADD COLUMN IF NOT EXISTS player_name TEXT;
 """
 
 
@@ -91,11 +99,18 @@ async def create_pool(dsn: str) -> asyncpg.Pool:
 
 
 _CHARACTER_COLUMNS = [
-    "name", "occupation", "age", "sex", "residence", "birthplace",
+    "name", "player", "occupation", "age", "sex", "residence", "birthplace",
     "str", "dex", "pow", "con", "app", "edu", "siz", "int", "mov",
     "hp_current", "hp_max", "san_current", "san_starting",
     "mp_current", "mp_max", "damage_bonus", "build", "cash", "assets", "skills",
+    "weapons", "major_wound", "mp_depleted",
 ]
+
+# JSONB 컬럼: 값이 없으면 빈 컨테이너로 채워 직렬화한다.
+_JSON_COLUMNS = {"skills": dict, "weapons": list}
+
+# NOT NULL 컬럼이라 값이 없으면 NULL 대신 false로 채워 넣는다.
+_BOOL_COLUMNS = ("major_wound", "mp_depleted")
 
 
 def _quote(column: str) -> str:
@@ -111,8 +126,12 @@ async def upsert_character(
     scenario_id: int | None = None,
 ) -> None:
     values = [data.get(col) for col in _CHARACTER_COLUMNS]
-    skills_index = _CHARACTER_COLUMNS.index("skills")
-    values[skills_index] = json.dumps(values[skills_index] or {})
+    for column, empty in _JSON_COLUMNS.items():
+        index = _CHARACTER_COLUMNS.index(column)
+        values[index] = json.dumps(values[index] if values[index] else empty())
+    for column in _BOOL_COLUMNS:
+        index = _CHARACTER_COLUMNS.index(column)
+        values[index] = bool(values[index])
 
     quoted = [_quote(c) for c in _CHARACTER_COLUMNS]
     placeholders = ", ".join(f"${i + 5}" for i in range(len(_CHARACTER_COLUMNS)))
@@ -136,8 +155,9 @@ def _row_to_character(row) -> dict | None:
     if row is None:
         return None
     result = dict(row)
-    if isinstance(result["skills"], str):
-        result["skills"] = json.loads(result["skills"])
+    for column in _JSON_COLUMNS:
+        if isinstance(result.get(column), str):
+            result[column] = json.loads(result[column])
     return result
 
 
@@ -162,16 +182,30 @@ async def get_pc_character(pool: asyncpg.Pool, guild_id: int, user_id: int) -> d
 
 
 async def update_san_current(
-    pool: asyncpg.Pool, guild_id: int, user_id: int, new_san: int
+    pool: asyncpg.Pool,
+    guild_id: int,
+    user_id: int,
+    new_san: int,
+    temp_insanity: bool = False,
+    indefinite_insanity: bool = False,
 ) -> bool:
+    # 광기 상태는 한 번 발생하면 유지된다(OR). 이후 굴림이 조건을 만족하지 않는다고
+    # 해서 이미 걸린 광기가 풀리지는 않으므로, 해제는 키퍼 재량(직접 DB/재등록)에 맡긴다.
     async with pool.acquire() as conn:
         result = await conn.execute(
             """
-            UPDATE characters SET san_current = $1, is_retired = $2, updated_at = now()
-            WHERE guild_id = $3 AND discord_user_id = $4 AND role = 'PC'
+            UPDATE characters
+            SET san_current = $1,
+                is_retired = $2,
+                temp_insanity = temp_insanity OR $3,
+                indefinite_insanity = indefinite_insanity OR $4,
+                updated_at = now()
+            WHERE guild_id = $5 AND discord_user_id = $6 AND role = 'PC'
             """,
             new_san,
             new_san == 0,
+            temp_insanity,
+            indefinite_insanity,
             guild_id,
             user_id,
         )
@@ -261,13 +295,7 @@ async def get_roster(pool: asyncpg.Pool, scenario_id: int) -> list[dict]:
             """,
             scenario_id,
         )
-    results = []
-    for row in rows:
-        character = dict(row)
-        if isinstance(character["skills"], str):
-            character["skills"] = json.loads(character["skills"])
-        results.append(character)
-    return results
+    return [_row_to_character(row) for row in rows]
 
 
 async def advance_narration_position(
@@ -296,6 +324,7 @@ async def create_registration_token(
     user_id: int,
     role: str = "PC",
     scenario_id: int | None = None,
+    player_name: str | None = None,
 ) -> str:
     token = secrets.token_urlsafe(24)
     expires_at = datetime.now(timezone.utc) + _TOKEN_TTL
@@ -303,8 +332,8 @@ async def create_registration_token(
         await conn.execute(
             """
             INSERT INTO registration_tokens
-                (token, guild_id, discord_user_id, role, scenario_id, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (token, guild_id, discord_user_id, role, scenario_id, expires_at, player_name)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             token,
             guild_id,
@@ -312,6 +341,7 @@ async def create_registration_token(
             role,
             scenario_id,
             expires_at,
+            player_name,
         )
     return token
 

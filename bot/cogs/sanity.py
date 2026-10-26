@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.embeds import sanity_embed
+from bot.embeds import sanity_embed, status_badges
 from dice import sanity_check
 from storage import get_pc_character, update_san_current
 
@@ -28,18 +28,36 @@ class SanityCog(commands.Cog):
 
         current_san = character["san_current"]
         result = sanity_check(current_san, 손실식)
+
+        temp_insanity = result.loss >= 5
+        indefinite_insanity = current_san > 0 and result.loss >= current_san / 5
         await update_san_current(
-            self.pool, interaction.guild_id, interaction.user.id, result.remaining_san
+            self.pool,
+            interaction.guild_id,
+            interaction.user.id,
+            result.remaining_san,
+            temp_insanity=temp_insanity,
+            indefinite_insanity=indefinite_insanity,
         )
 
         warnings = []
-        if result.loss >= 5:
+        if temp_insanity:
             warnings.append("이번 손실이 5 이상 — 일시적 광기 판정 필요(INT 판정, 키퍼 재량으로 진행)")
-        if current_san > 0 and result.loss >= current_san / 5:
+        if indefinite_insanity:
             warnings.append("이번 손실이 직전 SAN의 1/5 이상 — 부정형 광기 위험")
         if result.remaining_san == 0:
             warnings.append("SAN 0 도달 — 영구적 광기로 퇴장 처리되었습니다")
-        await interaction.response.send_message(embed=sanity_embed(result, warnings))
+
+        statuses = status_badges(
+            {
+                "temp_insanity": temp_insanity or character.get("temp_insanity"),
+                "indefinite_insanity": indefinite_insanity
+                or character.get("indefinite_insanity"),
+            }
+        )
+        await interaction.response.send_message(
+            embed=sanity_embed(result, warnings, statuses=statuses)
+        )
 
 
 async def setup(bot: commands.Bot) -> None:

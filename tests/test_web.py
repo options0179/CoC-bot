@@ -9,7 +9,14 @@ from bot.web import create_app
 
 
 def _mock_valid_token(monkeypatch, **overrides):
-    row = {"guild_id": 1, "discord_user_id": 100, "role": "PC", "scenario_id": None, **overrides}
+    row = {
+        "guild_id": 1,
+        "discord_user_id": 100,
+        "role": "PC",
+        "scenario_id": None,
+        "player_name": None,
+        **overrides,
+    }
     monkeypatch.setattr("bot.web.get_valid_registration_token", AsyncMock(return_value=row))
     return row
 
@@ -334,6 +341,201 @@ def test_post_registration_ignores_body_supplied_identity_fields(monkeypatch):
         assert args[2] == 100  # token's user_id, not the body's 999
         assert kwargs["role"] == "PC"  # token's role, not the body's "GM"
         assert kwargs["scenario_id"] is None  # token's scenario_id, not the body's 42
+
+    asyncio.run(_body())
+
+
+def test_post_registration_writes_player_from_token_not_body(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch, player_name="샬럿")
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "player": "위조된플레이어"},
+            )
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["player"] == "샬럿"
+
+    asyncio.run(_body())
+
+
+def test_post_registration_passes_manual_status_flags(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "major_wound": True, "mp_depleted": False},
+            )
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["major_wound"] is True
+        assert args[3]["mp_depleted"] is False
+
+    asyncio.run(_body())
+
+
+def test_post_registration_defaults_status_flags_to_false(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/register/tok", json={"name": "탐사자", "pow": 50})
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["major_wound"] is False
+        assert args[3]["mp_depleted"] is False
+
+    asyncio.run(_body())
+
+
+def test_post_registration_rejects_non_boolean_status_flag(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "major_wound": "yes"},
+            )
+            assert resp.status == 400
+            body = await resp.json()
+            assert body["ok"] is False
+            assert "major_wound" in body["error"]
+
+    asyncio.run(_body())
+
+
+def test_post_registration_ignores_body_supplied_insanity_flags(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={
+                    "name": "탐사자",
+                    "pow": 50,
+                    "temp_insanity": True,
+                    "indefinite_insanity": True,
+                },
+            )
+            assert resp.status == 200
+
+        # 광기 상태는 /산정이 파생하는 값이라 등록 폼에서 설정할 수 없어야 한다.
+        args, _ = upsert_mock.call_args
+        assert "temp_insanity" not in args[3]
+        assert "indefinite_insanity" not in args[3]
+
+    asyncio.run(_body())
+
+
+def test_post_registration_accepts_weapon_list(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        weapons = [{"name": "권총 .38", "damage": "1d10", "ammo": "6"}]
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "weapons": weapons},
+            )
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["weapons"] == weapons
+
+    asyncio.run(_body())
+
+
+def test_post_registration_defaults_weapons_to_empty_list(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        upsert_mock = AsyncMock()
+        monkeypatch.setattr("bot.web.upsert_character", upsert_mock)
+        monkeypatch.setattr("bot.web.consume_registration_token", AsyncMock())
+
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post("/api/register/tok", json={"name": "탐사자", "pow": 50})
+            assert resp.status == 200
+
+        args, _ = upsert_mock.call_args
+        assert args[3]["weapons"] == []
+
+    asyncio.run(_body())
+
+
+def test_post_registration_rejects_non_list_weapons(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "weapons": {"name": "권총"}},
+            )
+            assert resp.status == 400
+            body = await resp.json()
+            assert "무기" in body["error"]
+
+    asyncio.run(_body())
+
+
+def test_post_registration_rejects_weapon_with_non_string_values(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "weapons": [{"name": "권총", "ammo": 6}]},
+            )
+            assert resp.status == 400
+            body = await resp.json()
+            assert "무기" in body["error"]
+
+    asyncio.run(_body())
+
+
+def test_post_registration_rejects_weapon_without_name(monkeypatch):
+    async def _body():
+        _mock_valid_token(monkeypatch)
+        app = create_app(pool=None)
+        async with TestClient(TestServer(app)) as client:
+            resp = await client.post(
+                "/api/register/tok",
+                json={"name": "탐사자", "pow": 50, "weapons": [{"damage": "1d10"}]},
+            )
+            assert resp.status == 400
+            body = await resp.json()
+            assert "무기" in body["error"]
 
     asyncio.run(_body())
 
