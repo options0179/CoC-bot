@@ -1,0 +1,19 @@
+services:
+  bot:
+    build: .
+    container_name: coc-bot
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?Set DISCORD_TOKEN in .env}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DATABASE_PATH: /app/data/coc-bot.sqlite3
+      PORT: "8080"
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - bot-data:/app/data
+
+volumes:
+  bot-data:
+    name: coc-bot-data
+    external: true

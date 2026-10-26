@@ -88,8 +88,8 @@ def parse_dice_notation(text: str) -> DiceExpr:
         raise ValueError(f"올바르지 않은 주사위 표기입니다: {text}")
     count, sides, modifier = match.groups()
     count, sides = int(count), int(sides)
-    if count > 100:
-        raise ValueError(f"주사위 개수는 100개를 초과할 수 없습니다: {text}")
+    if not (1 <= count <= 100):
+        raise ValueError(f"주사위 개수는 1~100개여야 합니다: {text}")
     if not (1 <= sides <= 1000):
         raise ValueError(f"주사위 면 수는 1~1000 사이여야 합니다: {text}")
     return DiceExpr(count=count, sides=sides, modifier=int(modifier) if modifier else 0)

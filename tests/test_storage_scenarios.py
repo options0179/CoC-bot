@@ -1,31 +1,25 @@
 import asyncio
-import os
 
 import pytest
 
 from storage import (
+    advance_narration_position,
     bind_scenario_channel,
     create_scenario,
     get_roster,
     get_scenario_by_channel,
     get_scenario_by_title,
+    join_scenario,
+    upsert_character,
 )
 
-TEST_DSN = os.environ.get("TEST_DATABASE_URL")
-pytestmark = pytest.mark.skipif(not TEST_DSN, reason="TEST_DATABASE_URL not set")
-
-
 @pytest.fixture
-def run_db():
+def run_db(tmp_path):
     def _run(body):
         async def _main():
             from storage import create_pool
 
-            pool = await create_pool(TEST_DSN)
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    "TRUNCATE registration_tokens, scenario_participants, characters, scenarios"
-                )
+            pool = await create_pool(str(tmp_path / "scenarios.sqlite3"))
             try:
                 return await body(pool)
             finally:
@@ -130,5 +124,45 @@ def test_get_roster_empty_when_no_participants(run_db):
             pool, guild_id=1, title="시나리오", keeper_user_id=1, doc_url="https://x", structure=[]
         )
         assert await get_roster(pool, scenario_id) == []
+
+    run_db(_body)
+
+
+def test_join_scenario_adds_pc_to_roster_idempotently(run_db):
+    async def _body(pool):
+        scenario_id = await create_scenario(
+            pool, guild_id=1, title="참여", keeper_user_id=1, doc_url="https://x", structure=[]
+        )
+        await upsert_character(
+            pool, guild_id=1, user_id=100, data={"name": "탐사자", "skills": {"회계": 40}}
+        )
+        async with pool.acquire() as conn:
+            pc = await conn.fetchrow(
+                "SELECT id FROM characters WHERE guild_id = $1 AND discord_user_id = $2 AND role = 'PC'",
+                1,
+                100,
+            )
+        await join_scenario(pool, scenario_id, pc["id"])
+        await join_scenario(pool, scenario_id, pc["id"])
+        assert [c["name"] for c in await get_roster(pool, scenario_id)] == ["탐사자"]
+
+    run_db(_body)
+
+
+def test_narration_position_uses_compare_and_set_and_marks_completion(run_db):
+    async def _body(pool):
+        scenario_id = await create_scenario(
+            pool,
+            guild_id=1,
+            title="완료 상태",
+            keeper_user_id=1,
+            doc_url="https://x",
+            structure=SAMPLE_STRUCTURE,
+        )
+        assert await advance_narration_position(pool, scenario_id, 0, 0, 0, 1) is True
+        assert await advance_narration_position(pool, scenario_id, 0, 0, 1, 0) is False
+        assert await advance_narration_position(pool, scenario_id, 0, 1, 1, 0) is True
+        scenario = await get_scenario_by_title(pool, 1, "완료 상태")
+        assert (scenario["current_scene_index"], scenario["current_line_index"]) == (1, 0)
 
     run_db(_body)

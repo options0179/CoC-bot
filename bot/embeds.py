@@ -146,9 +146,14 @@ def narration_embed(action_summary: str, purpose: str) -> discord.Embed:
 def scenario_embed(scenario: dict, roster: list[dict]) -> discord.Embed:
     embed = discord.Embed(title=scenario["title"], color=discord.Color.dark_gold())
     embed.add_field(name="키퍼", value=f"<@{scenario['keeper_user_id']}>", inline=False)
+    position = (
+        "완료"
+        if scenario["current_scene_index"] >= len(scenario["structure"])
+        else f"장면 {scenario['current_scene_index'] + 1} / {len(scenario['structure'])}"
+    )
     embed.add_field(
         name="진행 위치",
-        value=f"장면 {scenario['current_scene_index'] + 1} / {len(scenario['structure'])}",
+        value=position,
         inline=False,
     )
     names = "\n".join(c["name"] for c in roster) if roster else "(없음)"

@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock
 
 from bot.cogs.scenario import ScenarioCog, _extract_doc_id
@@ -40,36 +41,33 @@ def test_register_rejects_non_google_docs_link(monkeypatch):
     )
 
 
-class _FakeResponse:
-    status = 200
+def test_register_rejects_blank_title_before_fetch(monkeypatch):
+    fetch_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.scenario.fetch_google_doc", fetch_mock)
+    cog = ScenarioCog(bot=_make_bot())
+    interaction = _make_interaction()
 
-    async def text(self):
-        return "<html></html>"
+    asyncio.run(
+        cog.register.callback(
+            cog, interaction, "  ", "https://docs.google.com/document/d/abc123/edit"
+        )
+    )
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-
-class _FakeSession:
-    def get(self, url):
-        return _FakeResponse()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
+    fetch_mock.assert_not_awaited()
+    interaction.response.send_message.assert_awaited_once_with(
+        "시나리오 제목을 입력해주세요.", ephemeral=True
+    )
 
 
 def test_register_parses_and_stores_on_success(monkeypatch):
-    monkeypatch.setattr("bot.cogs.scenario.aiohttp.ClientSession", lambda: _FakeSession())
-    monkeypatch.setattr(
-        "bot.cogs.scenario.parse_scenario_html",
-        lambda html: [{"part": "제1부", "scene": "장면 1", "lines": ["문장1"]}],
-    )
+    monkeypatch.setattr("bot.cogs.scenario.fetch_google_doc", AsyncMock(return_value="<html></html>"))
+    parse_threads = []
+
+    def parse(html):
+        parse_threads.append(threading.get_ident())
+        return [{"part": "제1부", "scene": "장면 1", "lines": ["문장1"]}]
+
+    monkeypatch.setattr("bot.cogs.scenario.parse_scenario_html", parse)
     create_mock = AsyncMock(return_value=1)
     monkeypatch.setattr("bot.cogs.scenario.create_scenario", create_mock)
     cog = ScenarioCog(bot=_make_bot())
@@ -77,17 +75,19 @@ def test_register_parses_and_stores_on_success(monkeypatch):
 
     asyncio.run(
         cog.register.callback(
-            cog, interaction, "마지막 상영", "https://docs.google.com/document/d/abc123/edit"
+            cog, interaction, " 마지막 상영 ", "https://docs.google.com/document/d/abc123/edit"
         )
     )
 
     interaction.response.defer.assert_awaited_once()
     create_mock.assert_awaited_once()
+    assert create_mock.await_args.args[2] == "마지막 상영"
+    assert parse_threads[0] != threading.get_ident()
     interaction.followup.send.assert_awaited_once_with("'마지막 상영' 시나리오를 등록했습니다. (장면 1개)")
 
 
 def test_register_reports_when_no_narration_found(monkeypatch):
-    monkeypatch.setattr("bot.cogs.scenario.aiohttp.ClientSession", lambda: _FakeSession())
+    monkeypatch.setattr("bot.cogs.scenario.fetch_google_doc", AsyncMock(return_value="<html></html>"))
     monkeypatch.setattr("bot.cogs.scenario.parse_scenario_html", lambda html: [])
     cog = ScenarioCog(bot=_make_bot())
     interaction = _make_interaction()
@@ -151,6 +151,49 @@ def test_start_reports_when_channel_taken(monkeypatch):
 
     interaction.response.send_message.assert_awaited_once_with(
         "이 채널에는 이미 다른 시나리오가 배정돼 있습니다.", ephemeral=True
+    )
+
+
+def test_join_adds_registered_pc_to_channel_scenario(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_scenario_by_channel",
+        AsyncMock(return_value={"id": 7}),
+    )
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_pc_character",
+        AsyncMock(return_value={"id": 42, "name": "탐사자"}),
+    )
+    join_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.scenario.join_scenario", join_mock)
+    cog = ScenarioCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.join.callback(cog, interaction))
+
+    join_mock.assert_awaited_once_with(cog.pool, 7, 42)
+    interaction.response.send_message.assert_awaited_once_with(
+        "탐사자가 시나리오에 참가했습니다."
+    )
+
+
+def test_join_rejects_unregistered_pc(monkeypatch):
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_scenario_by_channel",
+        AsyncMock(return_value={"id": 7}),
+    )
+    monkeypatch.setattr(
+        "bot.cogs.scenario.get_pc_character", AsyncMock(return_value=None)
+    )
+    join_mock = AsyncMock()
+    monkeypatch.setattr("bot.cogs.scenario.join_scenario", join_mock)
+    cog = ScenarioCog(bot=_make_bot())
+    interaction = _make_interaction()
+
+    asyncio.run(cog.join.callback(cog, interaction))
+
+    join_mock.assert_not_awaited()
+    interaction.response.send_message.assert_awaited_once_with(
+        "등록된 PC 캐릭터가 없습니다.", ephemeral=True
     )
 
 
