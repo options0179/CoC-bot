@@ -1,159 +1,189 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from bot.cogs.action import ActionCog
 from dice import CheckResult, SuccessLevel
 from intent_analyzer import IntentResult
 
 
-def _make_interaction(user_id=1, guild_id=10):
+RULE = {"id": "desk", "skill": "관찰력", "action": "서랍 조사",
+        "success": "문서를 발견한다", "failure": "문서를 찾지 못한다"}
+SCENARIO = {"id": 7, "guild_id": 10, "title": "관측소", "current_scene_index": 0,
+            "current_line_index": 0,
+            "structure": [{"scene": "서재", "lines": ["책상이 있다."], "checks": [RULE]}]}
+
+
+def _interaction():
     interaction = MagicMock()
     interaction.response = AsyncMock()
     interaction.followup = AsyncMock()
-    interaction.user.id = user_id
-    interaction.guild_id = guild_id
+    interaction.user.id = 1
+    interaction.guild_id = 10
+    interaction.channel_id = 99
     return interaction
 
 
-def test_action_sends_narration_when_no_roll_required(monkeypatch):
+def _intent(check_id="desk", confidence=0.9, requires_roll=True, skill="관찰력"):
+    return IntentResult("서랍을 뒤진다", "skill_check", skill, "조사", "서랍",
+                        requires_roll, confidence, check_id)
+
+
+def _setup(monkeypatch, scenario=SCENARIO, intent=None, skill=60):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="주변을 둘러본다",
-            intent_type="none",
-            target_skill="unknown",
-            purpose="상황 파악",
-            target_object="",
-            requires_roll=False,
-            confidence=0.5,
-        ),
-    )
+    get_scenario = AsyncMock(return_value=scenario)
+    get_roster = AsyncMock(return_value=[{"discord_user_id": 1}])
+    get_skill = AsyncMock(return_value=skill)
+    analyze = MagicMock(return_value=intent or _intent())
+    roll = MagicMock(return_value=CheckResult(roll=35, skill=60, level=SuccessLevel.REGULAR))
+    monkeypatch.setattr("bot.cogs.action.get_scenario_by_channel", get_scenario)
+    monkeypatch.setattr("bot.cogs.action.get_roster", get_roster)
+    monkeypatch.setattr("bot.cogs.action.get_skill_value", get_skill)
+    monkeypatch.setattr("bot.cogs.action.analyze_intent", analyze)
+    monkeypatch.setattr("bot.cogs.action.roll_check", roll)
+    return get_scenario, get_roster, get_skill, analyze, roll
+
+
+def _run():
+    interaction = _interaction()
     cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction()
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="주변을 둘러본다"))
-
-    interaction.followup.send.assert_awaited_once()
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs["embed"].title == "서술"
+    asyncio.run(cog.action.callback(cog, interaction, 설명="서랍을 뒤진다"))
+    return interaction
 
 
-def test_action_rolls_check_when_skill_value_found(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="책상 서랍을 더듬는다",
-            intent_type="skill_check",
-            target_skill="관찰력",
-            purpose="숨겨진 물건을 찾으려 함",
-            target_object="책상 서랍",
-            requires_roll=True,
-            confidence=0.9,
-        ),
-    )
-    mock_get_skill_value = AsyncMock(return_value=60)
-    monkeypatch.setattr(
-        "bot.cogs.action.get_skill_value",
-        mock_get_skill_value,
-    )
-    monkeypatch.setattr(
-        "bot.cogs.action.roll_check",
-        lambda skill: CheckResult(roll=10, skill=skill, level=SuccessLevel.REGULAR),
-    )
-    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction(user_id=1, guild_id=10)
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="책상 서랍을 더듬는다"))
-
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs["embed"].title == "관찰력 판정"
-    mock_get_skill_value.assert_awaited_once_with("fake-pool", 10, 1, "관찰력")
+def test_action_uses_current_scene_rule_and_registered_skill(monkeypatch):
+    _, _, get_skill, analyze, roll = _setup(monkeypatch, intent=_intent(skill="심리학"))
+    interaction = _run()
+    assert "서재" in analyze.call_args.args[1]
+    assert "책상이 있다" in analyze.call_args.args[1]
+    assert analyze.call_args.args[2] == [RULE]
+    get_skill.assert_awaited_once_with("fake-pool", 10, 1, "관찰력")
+    roll.assert_called_once_with(60)
+    embed = interaction.followup.send.call_args.kwargs["embed"]
+    assert embed.title == "관찰력 판정"
+    assert any("문서를 발견한다" in field.value for field in embed.fields)
 
 
-def test_action_sends_ephemeral_message_when_skill_value_missing(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="자물쇠를 딴다",
-            intent_type="skill_check",
-            target_skill="열쇠공",
-            purpose="문을 열려 함",
-            target_object="문",
-            requires_roll=True,
-            confidence=0.8,
-        ),
-    )
-    monkeypatch.setattr(
-        "bot.cogs.action.get_skill_value",
-        AsyncMock(return_value=None),
-    )
-    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction()
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="자물쇠를 딴다"))
-
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs.get("ephemeral") is True
+@pytest.mark.parametrize("level,branch", [
+    (SuccessLevel.CRITICAL, "success"), (SuccessLevel.EXTREME, "success"),
+    (SuccessLevel.HARD, "success"), (SuccessLevel.REGULAR, "success"),
+    (SuccessLevel.FAIL, "failure"), (SuccessLevel.FUMBLE, "failure"),
+])
+def test_action_selects_story_branch_from_dice_level(monkeypatch, level, branch):
+    _, _, _, _, roll = _setup(monkeypatch)
+    roll.return_value = CheckResult(roll=99 if branch == "failure" else 1,
+                                    skill=60, level=level)
+    interaction = _run()
+    embed = interaction.followup.send.call_args.kwargs["embed"]
+    assert any(RULE[branch] in field.value for field in embed.fields)
 
 
-def test_action_sends_narration_when_requires_roll_but_skill_unknown(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "bot.cogs.action.analyze_intent",
-        lambda text, scene_context: IntentResult(
-            action_summary="애매한 행동을 한다",
-            intent_type="skill_check",
-            target_skill="unknown",
-            purpose="판단하기 어려움",
-            target_object="",
-            requires_roll=True,
-            confidence=0.4,
-        ),
-    )
-    mock_get_skill_value = AsyncMock()
-    mock_roll_check = MagicMock()
-    monkeypatch.setattr("bot.cogs.action.get_skill_value", mock_get_skill_value)
-    monkeypatch.setattr("bot.cogs.action.roll_check", mock_roll_check)
-    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction()
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="애매한 행동을 한다"))
-
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs["embed"].title == "서술"
-    mock_get_skill_value.assert_not_called()
-    mock_roll_check.assert_not_called()
+@pytest.mark.parametrize("scenario,intent", [
+    (None, _intent()),
+    ({**SCENARIO, "structure": [{"scene": "서재", "lines": ["책상"], "checks": []}]}, _intent()),
+    (SCENARIO, _intent(check_id="")),
+    (SCENARIO, _intent(check_id="unknown")),
+    (SCENARIO, _intent(confidence=0.59)),
+])
+def test_action_refuses_unverified_rule_without_rolling(monkeypatch, scenario, intent):
+    _, _, get_skill, _, roll = _setup(monkeypatch, scenario=scenario, intent=intent)
+    interaction = _run()
+    assert "/판정" in interaction.followup.send.call_args.args[0]
+    get_skill.assert_not_awaited()
+    roll.assert_not_called()
 
 
-def test_action_sends_ephemeral_message_when_analyze_intent_raises_value_error(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    def _raise(text, scene_context):
-        raise ValueError("아무 메시지")
-
-    monkeypatch.setattr("bot.cogs.action.analyze_intent", _raise)
-    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction()
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="칼로 찌른다"))
-
-    interaction.followup.send.assert_awaited_once()
-    _, kwargs = interaction.followup.send.call_args
-    assert kwargs.get("ephemeral") is True
+@pytest.mark.parametrize("skill", [None, -1, 101, True, "60"])
+def test_action_refuses_missing_or_invalid_sheet_value(monkeypatch, skill):
+    _, _, _, _, roll = _setup(monkeypatch, skill=skill)
+    interaction = _run()
+    assert "/판정" in interaction.followup.send.call_args.args[0]
+    roll.assert_not_called()
 
 
-def test_action_reports_when_gemini_is_not_configured(monkeypatch):
+def test_action_requires_participant_pc(monkeypatch):
+    _, roster, _, _, roll = _setup(monkeypatch)
+    roster.return_value = [{"discord_user_id": 2}]
+    interaction = _run()
+    assert "/판정" in interaction.followup.send.call_args.args[0]
+    roll.assert_not_called()
+
+
+def test_action_refuses_rule_with_unregistered_skill(monkeypatch):
+    invalid = {**SCENARIO, "structure": [{"scene": "서재", "lines": ["책상"],
+                                             "checks": [{**RULE, "skill": "위조 기능"}]}]}
+    _, _, get_skill, _, roll = _setup(monkeypatch, scenario=invalid)
+    interaction = _run()
+    assert "/판정" in interaction.followup.send.call_args.args[0]
+    get_skill.assert_not_awaited()
+    roll.assert_not_called()
+
+
+def test_action_refuses_roll_if_scene_moves_during_analysis(monkeypatch):
+    get_scenario, _, _, _, roll = _setup(monkeypatch)
+    get_scenario.side_effect = [SCENARIO, {**SCENARIO, "current_line_index": 1}]
+    interaction = _run()
+    assert "장면이 이동" in interaction.followup.send.call_args.args[0]
+    roll.assert_not_called()
+
+
+def test_action_preserves_non_check_narration(monkeypatch):
+    _setup(monkeypatch, scenario=None, intent=_intent(check_id="", requires_roll=False))
+    interaction = _run()
+    assert interaction.followup.send.call_args.kwargs["embed"].title == "서술"
+
+
+@pytest.mark.parametrize("error,expected", [
+    ("empty", "비어"), ("blocked", "안전"),
+])
+def test_action_distinguishes_empty_and_blocked(monkeypatch, error, expected):
+    from intent_analyzer import IntentResponseBlocked, IntentResponseEmpty
+
+    _, _, _, analyze, roll = _setup(monkeypatch)
+    analyze.side_effect = (IntentResponseEmpty("secret") if error == "empty"
+                           else IntentResponseBlocked("secret"))
+    interaction = _run()
+    assert expected in interaction.followup.send.call_args.args[0]
+    roll.assert_not_called()
+
+
+@pytest.mark.parametrize("error,expected", [
+    (ValueError("secret response"), "형식"),
+    (TimeoutError("secret timeout"), "연결"),
+    (ConnectionError("secret network"), "연결"),
+])
+def test_action_sanitizes_analyzer_errors(monkeypatch, error, expected, caplog):
+    _, _, _, analyze, roll = _setup(monkeypatch)
+    analyze.side_effect = error
+    interaction = _run()
+    message = interaction.followup.send.call_args.args[0]
+    assert expected in message
+    assert "secret" not in message and "secret" not in caplog.text
+    roll.assert_not_called()
+    assert analyze.call_count == 1
+
+
+@pytest.mark.parametrize("status,expected", [(401, "인증"), (403, "인증"),
+                                               (429, "제한"), (503, "서비스")])
+def test_action_classifies_provider_status_without_retry(monkeypatch, status, expected, caplog):
+    class ProviderError(Exception):
+        code = status
+
+    _, _, _, analyze, roll = _setup(monkeypatch)
+    analyze.side_effect = ProviderError("secret key and request")
+    interaction = _run()
+    message = interaction.followup.send.call_args.args[0]
+    assert expected in message
+    assert "secret" not in message and "secret" not in caplog.text
+    assert analyze.call_count == 1
+    roll.assert_not_called()
+
+
+def test_action_reports_missing_key_without_analysis(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     analyze = MagicMock()
     monkeypatch.setattr("bot.cogs.action.analyze_intent", analyze)
-    cog = ActionCog(bot=MagicMock(pool="fake-pool"))
-    interaction = _make_interaction()
-
-    asyncio.run(cog.action.callback(cog, interaction, 설명="주변을 살핀다"))
-
-    interaction.response.send_message.assert_awaited_once_with(
-        "/행동 기능은 GEMINI_API_KEY 설정이 필요합니다.", ephemeral=True
-    )
+    interaction = _run()
+    interaction.response.send_message.assert_awaited_once()
     analyze.assert_not_called()

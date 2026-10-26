@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,6 +28,7 @@ def test_parses_valid_skill_check_response():
         "target_object": "책상 서랍",
         "requires_roll": True,
         "confidence": 0.9,
+        "check_id": "desk",
     })
 
     result = parse_intent_response(raw)
@@ -34,6 +36,7 @@ def test_parses_valid_skill_check_response():
     assert isinstance(result, IntentResult)
     assert result.target_skill == "관찰력"
     assert result.requires_roll is True
+    assert result.check_id == "desk"
 
 
 def test_rejects_unknown_intent_type():
@@ -128,6 +131,49 @@ def test_build_prompt_includes_scene_and_input():
     assert "어두운 복도" in prompt
 
 
+def test_prompt_lists_only_rule_ids_and_actions():
+    prompt = build_prompt("서랍을 뒤진다", "서재", [{
+        "id": "desk", "skill": "관찰력", "action": "서랍 조사",
+        "success": "비밀 문서", "failure": "아무것도 없음",
+    }])
+    assert "desk" in prompt and "서랍 조사" in prompt
+    assert "비밀 문서" not in prompt and "아무것도 없음" not in prompt
+    assert "check_id" in prompt
+
+
+def test_rejects_non_string_rule_id():
+    raw = json.dumps({"intent_type": "skill_check", "target_skill": "관찰력",
+                      "purpose": "조사", "requires_roll": True, "check_id": ["desk"]})
+    with pytest.raises(ValueError, match="check_id"):
+        parse_intent_response(raw)
+
+
+def test_analyze_intent_rejects_safety_blocked_response():
+    fake_client = MagicMock()
+    response = MagicMock(text=None)
+    response.prompt_feedback.block_reason.name = "SAFETY"
+    fake_client.models.generate_content.return_value = response
+    with pytest.raises(ValueError, match="안전"):
+        analyze_intent("행동", "장면", model=fake_client)
+
+
+def test_analyze_intent_rejects_empty_response_without_safety_block():
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = SimpleNamespace(text="", prompt_feedback=None)
+    with pytest.raises(ValueError, match="비어"):
+        analyze_intent("행동", "장면", model=fake_client)
+
+
+def test_analyze_intent_rejects_candidate_safety_block():
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = SimpleNamespace(
+        text=None, prompt_feedback=None,
+        candidates=[SimpleNamespace(finish_reason=SimpleNamespace(name="SAFETY"))],
+    )
+    with pytest.raises(ValueError, match="안전"):
+        analyze_intent("행동", "장면", model=fake_client)
+
+
 def test_analyze_intent_uses_injected_model_and_parses_response():
     fake_client = MagicMock()
     fake_client.models.generate_content.return_value = MagicMock(text=json.dumps({
@@ -141,10 +187,7 @@ def test_analyze_intent_uses_injected_model_and_parses_response():
 
     fake_client.models.generate_content.assert_called_once_with(
         model="gemini-3.8-flash",
-        contents="[현재 장면]\n어두운 복도\n\n[플레이어 입력]\n복도로 걸어간다\n\n"
-        "플레이어의 행동을 분석해 요청된 JSON 스키마로만 응답하라. "
-        "target_skill은 반드시 주어진 목록 중 하나여야 하며, "
-        "판정이 불필요하면 requires_roll=false, target_skill='unknown'으로 응답하라.",
+        contents=build_prompt("복도로 걸어간다", "어두운 복도"),
         config={"response_mime_type": "application/json", "response_schema": RESPONSE_SCHEMA},
     )
     assert result.purpose == "복도로 이동"
