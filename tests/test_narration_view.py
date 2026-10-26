@@ -28,7 +28,8 @@ def _view(eligible_user_ids={1, 2, 3}):
     )
 
 
-def test_non_participant_vote_rejected():
+def test_non_participant_vote_rejected(monkeypatch):
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 0, "current_line_index": 0}))
     view = _view()
     interaction = _make_interaction(user_id=99)
 
@@ -41,6 +42,7 @@ def test_non_participant_vote_rejected():
 
 
 def test_duplicate_vote_does_not_count_twice(monkeypatch):
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 0, "current_line_index": 0}))
     advance = AsyncMock(return_value=True)
     monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
     view = _view()
@@ -57,6 +59,7 @@ def test_duplicate_vote_does_not_count_twice(monkeypatch):
 
 
 def test_two_thirds_vote_advances_to_next_scene(monkeypatch):
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 0, "current_line_index": 0}))
     advance = AsyncMock(return_value=True)
     monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
     view = _view()
@@ -72,6 +75,7 @@ def test_two_thirds_vote_advances_to_next_scene(monkeypatch):
 
 
 def test_one_keeper_vote_advances_when_no_pcs_participate(monkeypatch):
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 0, "current_line_index": 0}))
     advance = AsyncMock(return_value=True)
     monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
     view = _view({1})
@@ -84,20 +88,23 @@ def test_one_keeper_vote_advances_when_no_pcs_participate(monkeypatch):
 
 
 def test_stale_narration_session_is_closed(monkeypatch):
-    monkeypatch.setattr(
-        "bot.cogs.narration.advance_narration_position", AsyncMock(return_value=False)
-    )
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 1, "current_line_index": 0}))
+    advance = AsyncMock(return_value=False)
+    monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
     view = _view({1})
     interaction = _make_interaction(user_id=1)
 
     asyncio.run(view.advance.callback(interaction))
 
-    interaction.response.edit_message.assert_awaited_once_with(
-        content="다른 낭독 진행에서 이미 장면이 이동했습니다.", embed=None, view=None
+    interaction.response.send_message.assert_awaited_once_with(
+        "낭독이 이미 다음 위치로 이동했습니다.", ephemeral=True
     )
+    advance.assert_not_awaited()
+    assert view.votes == set()
 
 
 def test_last_line_marks_scenario_complete(monkeypatch):
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 0, "current_line_index": 0}))
     advance = AsyncMock(return_value=True)
     monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
     view = NarrationView(
@@ -115,4 +122,26 @@ def test_last_line_marks_scenario_complete(monkeypatch):
     advance.assert_awaited_once_with("pool", 9, 0, 0, 1, 0)
     interaction.response.edit_message.assert_awaited_once_with(
         content="낭독이 완료되었습니다.", embed=None, view=None
+    )
+
+
+def test_vote_is_reset_in_recreated_view(monkeypatch):
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 0, "current_line_index": 0}))
+    original = _view()
+    asyncio.run(original.advance.callback(_make_interaction(user_id=1)))
+    restored = _view()
+    assert original.votes == {1}
+    assert restored.votes == set()
+    assert restored.advance.custom_id == original.advance.custom_id
+    assert restored.is_persistent()
+
+
+def test_compare_and_set_race_returns_stale_ephemeral(monkeypatch):
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value={"current_scene_index": 0, "current_line_index": 0}))
+    monkeypatch.setattr("bot.cogs.narration.advance_narration_position", AsyncMock(return_value=False))
+    view = _view({1})
+    interaction = _make_interaction(user_id=1)
+    asyncio.run(view.advance.callback(interaction))
+    interaction.response.send_message.assert_awaited_once_with(
+        "낭독이 이미 다음 위치로 이동했습니다.", ephemeral=True
     )

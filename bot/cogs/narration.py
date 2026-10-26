@@ -3,7 +3,13 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.embeds import keeper_narration_embed
-from storage import advance_narration_position, get_roster, get_scenario_by_channel
+from storage import (
+    advance_narration_position,
+    get_roster,
+    get_scenario_by_channel,
+    get_scenario_by_id,
+    get_scenarios,
+)
 
 
 class NarrationView(discord.ui.View):
@@ -16,7 +22,7 @@ class NarrationView(discord.ui.View):
         line_index: int,
         eligible_user_ids: set[int],
     ) -> None:
-        super().__init__(timeout=900)
+        super().__init__(timeout=None)
         self.pool = pool
         self.scenario_id = scenario_id
         self.structure = structure
@@ -25,9 +31,18 @@ class NarrationView(discord.ui.View):
         self.eligible_user_ids = eligible_user_ids
         self.votes: set[int] = set()
         self.required_votes = (2 * len(eligible_user_ids) + 2) // 3
+        self.advance.custom_id = f"narration:{scenario_id}:{scene_index}:{line_index}"
 
     @discord.ui.button(label="다음", style=discord.ButtonStyle.primary)
     async def advance(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        scenario = await get_scenario_by_id(self.pool, self.scenario_id)
+        if scenario is None or (
+            scenario["current_scene_index"], scenario["current_line_index"]
+        ) != (self.scene_index, self.line_index):
+            await interaction.response.send_message(
+                "낭독이 이미 다음 위치로 이동했습니다.", ephemeral=True
+            )
+            return
         user_id = interaction.user.id
         if user_id not in self.eligible_user_ids:
             await interaction.response.send_message(
@@ -54,13 +69,11 @@ class NarrationView(discord.ui.View):
             *target,
         )
         if not advanced:
-            self.stop()
-            await interaction.response.edit_message(
-                content="다른 낭독 진행에서 이미 장면이 이동했습니다.", embed=None, view=None
+            await interaction.response.send_message(
+                "낭독이 이미 다음 위치로 이동했습니다.", ephemeral=True
             )
             return
         if next_position is None:
-            self.stop()
             await interaction.response.edit_message(
                 content="낭독이 완료되었습니다.", embed=None, view=None
             )
@@ -91,6 +104,20 @@ def _next_position(
     if next_scene < len(structure):
         return next_scene, 0
     return None
+
+
+async def register_persistent_narration_views(bot: commands.Bot) -> None:
+    for scenario in await get_scenarios(bot.pool):
+        roster = await get_roster(bot.pool, scenario["id"])
+        eligible_user_ids = {scenario["keeper_user_id"]} | {
+            character["discord_user_id"] for character in roster
+        }
+        for scene_index, scene in enumerate(scenario["structure"]):
+            for line_index, _ in enumerate(scene["lines"]):
+                bot.add_view(NarrationView(
+                    bot.pool, scenario["id"], scenario["structure"],
+                    scene_index, line_index, eligible_user_ids,
+                ))
 
 
 class NarrationCog(commands.Cog):
@@ -149,3 +176,4 @@ class NarrationCog(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(NarrationCog(bot))
+    await register_persistent_narration_views(bot)

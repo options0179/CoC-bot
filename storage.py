@@ -337,6 +337,18 @@ async def get_scenario_by_channel(pool: SQLitePool, channel_id: int) -> dict | N
     return _scenario_row_to_dict(row)
 
 
+async def get_scenario_by_id(pool: SQLitePool, scenario_id: int) -> dict | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM scenarios WHERE id = $1", scenario_id)
+    return _scenario_row_to_dict(row)
+
+
+async def get_scenarios(pool: SQLitePool) -> list[dict]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM scenarios ORDER BY id")
+    return [_scenario_row_to_dict(row) for row in rows]
+
+
 async def bind_scenario_channel(
     pool: SQLitePool, guild_id: int, title: str, channel_id: int
 ) -> bool:
