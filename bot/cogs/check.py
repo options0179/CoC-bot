@@ -57,7 +57,10 @@ class CheckCog(commands.Cog):
             if is_success(result.level)
             else PushView(interaction.user.id, 스킬값, 보너스, 페널티)
         )
-        await interaction.response.send_message(embed=embed, view=view)
+        if view is None:
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed, view=view)
 
 
 async def setup(bot: commands.Bot) -> None:

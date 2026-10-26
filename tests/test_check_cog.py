@@ -38,8 +38,9 @@ def test_check_no_push_view_on_success(monkeypatch):
 
     asyncio.run(cog.check.callback(cog, interaction, 스킬값=50, 보너스=0, 페널티=0))
 
+    interaction.response.send_message.assert_awaited_once()
     _, kwargs = interaction.response.send_message.call_args
-    assert kwargs["view"] is None
+    assert "view" not in kwargs
 
 
 def test_push_view_reroll_disables_button_and_sends_followup(monkeypatch):
