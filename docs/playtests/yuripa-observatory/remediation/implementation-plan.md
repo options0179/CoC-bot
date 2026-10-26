@@ -68,6 +68,7 @@
 ### Task 3: 재시작 안전 낭독과 완료 표시
 
 **Files:**
+- Modify: `storage.py`
 - Modify: `bot/cogs/narration.py`
 - Modify: `bot/main.py`
 - Modify: `bot/cogs/scenario.py` 또는 `bot/embeds.py` (완료 상태 표시 위치에 따라)
@@ -77,7 +78,7 @@
 
 - [ ] 중복/낡은 위치와 참가자 정족수(특히 같은 Discord ID가 Keeper/PC에 쓰이는 경우)를 검증하는 테스트를 먼저 추가한다.
 - [ ] 마지막 진행 위치가 `len(structure)`일 때 완료를 반환하고 조회가 “완료”를 표시하는 테스트를 추가한다.
-- [ ] Persistent view 등록 및 재시작 후 현재 버튼 재개 동작을 구현한다. 모든 저장된 시나리오 위치의 custom ID를 등록해 과거 메시지의 버튼도 callback으로 받고 stale 응답을 준다.
+- [ ] Persistent view 등록 및 재시작 후 현재 버튼 재개 동작을 구현한다. storage에서 저장된 시나리오를 읽고 모든 줄 위치의 custom ID를 등록해 과거 메시지의 버튼도 callback으로 받고 stale 응답을 준다.
 - [ ] 모든 낭독 테스트와 `pytest tests/test_narration_cog.py tests/test_narration_view.py tests/test_embeds.py tests/test_main.py -q`를 실행한다.
 
 ### Task 4: Named volume 로컬 Docker 실행 및 절차 문서화
