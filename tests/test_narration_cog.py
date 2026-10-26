@@ -139,6 +139,37 @@ def test_keeper_and_pc_same_discord_account_need_one_vote(monkeypatch):
     advance.assert_awaited_once_with(cog.pool, 1, 0, 0, 0, 1)
 
 
+def test_distinct_keeper_and_pc_accounts_both_vote_before_advancing(monkeypatch):
+    scenario = {
+        "id": 1, "structure": _STRUCTURE, "current_scene_index": 0,
+        "current_line_index": 0, "keeper_user_id": 100,
+    }
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_channel", AsyncMock(return_value=scenario))
+    monkeypatch.setattr("bot.cogs.narration.get_roster", AsyncMock(return_value=[{"discord_user_id": 101}]))
+    monkeypatch.setattr("bot.cogs.narration.get_scenario_by_id", AsyncMock(return_value=scenario))
+    advance = AsyncMock(return_value=True)
+    monkeypatch.setattr("bot.cogs.narration.advance_narration_position", advance)
+    cog = NarrationCog(bot=_make_bot())
+    start = _make_interaction(user_id=100)
+
+    async def _run():
+        await cog.start.callback(cog, start)
+        view = start.response.send_message.call_args.kwargs["view"]
+        assert view.eligible_user_ids == {100, 101}
+        assert view.required_votes == 2
+
+        first_vote = _make_interaction(user_id=100)
+        await view.advance.callback(first_vote)
+        first_vote.response.edit_message.assert_awaited_once_with(view=view)
+        advance.assert_not_awaited()
+
+        second_vote = _make_interaction(user_id=101)
+        await view.advance.callback(second_vote)
+        advance.assert_awaited_once_with(cog.pool, 1, 0, 0, 0, 1)
+
+    asyncio.run(_run())
+
+
 def test_repeated_start_messages_share_votes(monkeypatch):
     scenario = {
         "id": 1, "structure": _STRUCTURE, "current_scene_index": 0,

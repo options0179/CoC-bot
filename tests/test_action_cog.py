@@ -6,6 +6,7 @@ import pytest
 from bot.cogs.action import ActionCog
 from dice import CheckResult, SuccessLevel
 from intent_analyzer import IntentResult
+from scenario_parser import parse_scenario_html
 
 
 RULE = {"id": "desk", "skill": "관찰력", "action": "서랍 조사",
@@ -63,6 +64,33 @@ def test_action_uses_current_scene_rule_and_registered_skill(monkeypatch):
     embed = interaction.followup.send.call_args.kwargs["embed"]
     assert embed.title == "관찰력 판정"
     assert any("문서를 발견한다" in field.value for field in embed.fields)
+
+
+def test_google_docs_check_flows_through_action_to_matching_skill_and_story_branch(monkeypatch):
+    html = """
+    <h1>유리파 관측소</h1><h2>장면 1: 잠긴 문</h2>
+    <h3>Keeper 낭독</h3><p>문틈으로 불빛이 샌다.</p>
+    <h3>Checks</h3><table><tbody>
+      <tr><th>id</th><th>skill</th><th>action</th><th>success</th><th>failure</th></tr>
+      <tr><td>door-listen</td><td>관찰력</td><td>문 너머를 듣는다.</td>
+          <td>숨소리를 듣는다.</td><td>발소리를 들킨다.</td></tr>
+    </tbody></table>
+    """
+    parsed = parse_scenario_html(html)
+    scenario = {**SCENARIO, "title": "유리파 관측소", "structure": parsed}
+    intent = _intent(check_id="door-listen", skill="관찰력")
+    _, _, get_skill, analyze, roll = _setup(monkeypatch, scenario=scenario, intent=intent, skill=72)
+    roll.return_value = CheckResult(roll=21, skill=72, level=SuccessLevel.HARD)
+
+    interaction = _run()
+
+    assert analyze.call_args.args[1] == "유리파 관측소 / 장면 1: 잠긴 문\n문틈으로 불빛이 샌다."
+    assert analyze.call_args.args[2] == parsed[0]["checks"]
+    get_skill.assert_awaited_once_with("fake-pool", 10, 1, "관찰력")
+    roll.assert_called_once_with(72)
+    embed = interaction.followup.send.call_args.kwargs["embed"]
+    assert embed.title == "관찰력 판정"
+    assert any("숨소리를 듣는다." in field.value for field in embed.fields)
 
 
 def test_action_rolls_registered_rule_even_when_model_says_no_roll(monkeypatch):

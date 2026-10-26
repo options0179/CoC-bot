@@ -97,3 +97,60 @@ def test_parse_scenario_html_without_checks_keeps_narration():
     scenes = parse_scenario_html(_SAMPLE_HTML)
     assert scenes[0]["checks"] == []
     assert scenes[1]["checks"] == []
+
+
+def test_parse_google_docs_export_checks_and_skip_incomplete_or_unsafe_rows():
+    # Google Docs exports table cell text inside nested paragraph/span elements.
+    html = """
+    <html><body>
+      <h1 class="title"><span>유리파 관측소</span></h1>
+      <h2 class="heading"><span>장면 1: 잠긴 문</span></h2>
+      <h3><span>Keeper 낭독</span></h3>
+      <p class="narration"><span>문틈으로 희미한 불빛이 샙니다.</span></p>
+      <h3><span>Checks</span></h3>
+      <table class="docs-table"><tbody>
+        <tr>
+          <td><p><span>id</span></p></td><td><p><span>skill</span></p></td>
+          <td><p><span>action</span></p></td><td><p><span>success</span></p></td>
+          <td><p><span>failure</span></p></td>
+        </tr>
+        <tr>
+          <td><p><span>door-listen</span></p></td><td><p><span>관찰력</span></p></td>
+          <td><p><span>문 너머를 듣는다.</span></p></td>
+          <td><p><span>안쪽에서 숨소리를 듣는다.</span></p></td>
+          <td><p><span>바닥이 삐걱여 인기척을 들킨다.</span></p></td>
+        </tr>
+        <tr>
+          <td><p><span></span></p></td><td><p><span>관찰력</span></p></td>
+          <td><p><span>id 누락</span></p></td><td><p><span>성공</span></p></td>
+          <td><p><span>실패</span></p></td>
+        </tr>
+        <tr>
+          <td><p><span>door-listen</span></p></td><td><p><span>심리학</span></p></td>
+          <td><p><span>중복 ID</span></p></td><td><p><span>성공</span></p></td>
+          <td><p><span>실패</span></p></td>
+        </tr>
+        <tr>
+          <td><p><span>invalid-skill</span></p></td><td><p><span>초능력</span></p></td>
+          <td><p><span>등록되지 않은 기능</span></p></td><td><p><span>성공</span></p></td>
+          <td><p><span>실패</span></p></td>
+        </tr>
+        <tr>
+          <td><p><span>short-row</span></p></td><td><p><span>관찰력</span></p></td>
+          <td><p><span>결과 셀 누락</span></p></td><td><p><span>성공</span></p></td>
+        </tr>
+      </tbody></table>
+    </body></html>
+    """
+
+    scenes = parse_scenario_html(html)
+
+    assert len(scenes) == 1
+    assert scenes[0]["lines"] == ["문틈으로 희미한 불빛이 샙니다."]
+    assert scenes[0]["checks"] == [{
+        "id": "door-listen",
+        "skill": "관찰력",
+        "action": "문 너머를 듣는다.",
+        "success": "안쪽에서 숨소리를 듣는다.",
+        "failure": "바닥이 삐걱여 인기척을 들킨다.",
+    }]
