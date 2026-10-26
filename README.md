@@ -56,9 +56,10 @@ Call of Cthulhu 7판 판정(스킬 체크, SAN 체크, 대립판정, 푸시 롤)
 `PushView`(버튼)를 함께 첨부 → 완성된 메시지를 응답으로 보낸다.
 
 **게임 상태 저장.** HP/MP/SAN 및 시나리오 낭독 위치는 SQLite 파일에 저장한다. 낭독 투표는
-메시지별 `NarrationView` 메모리에서만 집계되며, 봇이 재시작되면 투표는 초기화되고
-저장된 현재 문장에서 다시 시작한다. `/판정`의 `PushView`도 메모리에만 5분간 유지되며,
-재시작되면 버튼은 사라진다.
+메모리에서 집계되므로 봇 재시작 시 표가 초기화된다. 새 형식의 낭독 버튼은 재시작 후에도
+현재 저장 위치를 확인해 처리한다. 업데이트 전 임의 ID로 생성된 옛 낭독 버튼은 복구할 수
+없다. 해당 문장에서 `/낭독시작`을 다시 실행해 새 버튼을 만든다. `/판정`의 `PushView`는
+메모리에만 5분간 유지되며 재시작되면 버튼을 사용할 수 없다.
 
 **에러 처리.** `bot/main.py`의 전역 에러 핸들러(`on_app_command_error`)가
 `dice.py`에서 던진 `ValueError`(잘못된 다이스 표기, SAN 손실식 형식 오류 등)를
@@ -107,6 +108,7 @@ CoC-Bot/
 ├── scripts/migrate_postgres_to_sqlite.py # PostgreSQL에서 빈 SQLite 파일로 자료 이전
 ├── pytest.ini                    # pytest 설정 (pythonpath=.)
 ├── Dockerfile                    # 컨테이너 이미지 빌드 정의
+├── compose.yaml                 # 로컬 Docker 실행 및 영구 SQLite 볼륨
 ├── .dockerignore                 # Docker 빌드 컨텍스트 제외 목록 (.env 등 시크릿 방지)
 ├── .env.example                  # 환경변수 템플릿 (DISCORD_TOKEN, DATABASE_PATH, GEMINI_API_KEY)
 ├── .gitignore                    # git 추적 제외 목록
@@ -175,11 +177,75 @@ python -m bot.main
 
 ## Docker로 실행
 
-Gemini 키는 `/행동` 기능을 사용할 때만 전달하면 된다.
+`.env.example`을 복사한 뒤 `.env`에 Discord 토큰을 채운다. Gemini 키는 `/행동`을
+사용할 때만 필요하다. Compose는 `.env`의 값을 읽고 DB 경로를
+`/app/data/coc-bot.sqlite3`로 고정한다. 호스트의 헬스체크 포트는
+`127.0.0.1:18080`에서만 열린다.
 
 ```bash
-docker build -t coc-bot .
-docker run -v "$(pwd)/data:/app/data" -e DISCORD_TOKEN=발급받은_토큰 coc-bot
+cp .env.example .env
+# .env의 DISCORD_TOKEN을 채우고, /행동을 쓸 경우 GEMINI_API_KEY도 채운다.
+docker compose config -q
+docker compose up --build -d
+curl -fsS http://127.0.0.1:18080/health
+```
+
+Compose의 `coc-bot-data` 이름은 고정되어 있다. 이 이름의 Docker 볼륨이 이미 있으면
+그 안의 DB를 그대로 사용하며, 새 호스트에서 처음 실행하면 빈 볼륨을 만든다.
+`docker compose down`은 볼륨을 남긴다. 데이터를 보존하려면 `down -v`를 실행하지 않는다.
+기존에 수동으로 실행한 `coc-bot` 컨테이너가 있으면 먼저 중지하고 제거해야 동일 이름의
+Compose 컨테이너를 시작할 수 있다. 컨테이너 제거는 `coc-bot-data` 볼륨을 삭제하지 않는다.
+
+**예전 `./data` bind mount의 SQLite 파일 이전.** 이미 `coc-bot-data`에 운영 DB가 있다면
+이 절차를 실행하지 않는다. 이전 대상 볼륨이 비어 있을 때만, 기존 봇을 완전히 중지한 뒤
+아래 명령을 실행한다. `sqlite3.Connection.backup()`으로 DB의 일관된 스냅샷을 만들며,
+실행 중인 DB 파일이나 WAL 파일을 직접 복사하지 않는다. `./data`가 아닌 경로를 썼다면
+`$PWD/data`를 해당 절대 경로로 바꾼다.
+
+```bash
+docker run --rm -i \
+  -v coc-bot-data:/app/data \
+  -v "$PWD/data:/old-data:ro" \
+  python:3.12-slim python - <<'PY'
+from contextlib import closing
+from pathlib import Path
+import sqlite3
+
+source_path = Path('/old-data/coc-bot.sqlite3')
+target_path = Path('/app/data/coc-bot.sqlite3')
+if not source_path.is_file():
+    raise SystemExit('이전 DB를 찾지 못했습니다.')
+if target_path.exists():
+    raise SystemExit('대상 볼륨에 DB가 이미 있어 이전을 중단합니다.')
+with closing(sqlite3.connect(f'file:{source_path}?mode=ro', uri=True)) as source:
+    if source.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+        raise SystemExit('원본 DB 무결성 검사에 실패했습니다.')
+    with closing(sqlite3.connect(target_path)) as target:
+        source.backup(target)
+        if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+            raise SystemExit('대상 DB 무결성 검사에 실패했습니다.')
+print('SQLite 백업 및 무결성 검사 완료')
+PY
+```
+
+이전 후 `docker compose up --build -d`로 시작한다. 저장 상태와 무결성은 봇을
+중지한 상태에서 아래처럼 확인할 수 있다. `integrity_check`가 `ok`여야 한다.
+낭독 위치(`current_scene_index`, `current_line_index`)를 기록한 다음
+`docker compose down`과 `docker compose up -d`를 실행하고 다시 조회해 같은 값인지
+확인하면 재시작 뒤에도 진행 상태가 보존되는지 검증할 수 있다.
+
+```bash
+docker compose down
+docker run --rm -i -v coc-bot-data:/app/data python:3.12-slim python - <<'PY'
+from contextlib import closing
+import sqlite3
+
+with closing(sqlite3.connect('file:/app/data/coc-bot.sqlite3?mode=ro', uri=True)) as db:
+    print('integrity_check:', db.execute('PRAGMA integrity_check').fetchone()[0])
+    for row in db.execute('SELECT id, current_scene_index, current_line_index FROM scenarios ORDER BY id'):
+        print('scenario position:', *row)
+PY
+docker compose up -d
 ```
 
 ## 저비용 호스팅
