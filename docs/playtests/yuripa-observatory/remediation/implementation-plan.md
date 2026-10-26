@@ -86,6 +86,7 @@
 **Files:**
 - Create: `compose.yaml`
 - Modify: `README.md` (named volume migration and legacy narration button recovery instructions)
+- Modify: `.dockerignore` (exclude local MCP config from image build context)
 - Test: 실행 절차 self-check 또는 Docker 검증 기록
 
 **Interfaces:** `docker compose up --build`가 `.env`를 사용하고 `coc-bot-data` named volume을 `/app/data`에 연결한다. host port는 loopback에만 노출한다.
@@ -93,6 +94,7 @@
 기존 volume 이름이 있으면 명시적으로 재사용한다. 새 빈 volume은 자동으로 기존 `./data`를 가져오지 않는다. 기존 bind-mount SQLite를 이전하는 운영 절차는 봇을 중지한 뒤 SQLite backup API로 복제하고, volume 내부로 가져온 후 `PRAGMA integrity_check`를 확인하는 방식으로 README에 기록한다. 라이브 DB/WAL 직접 복사는 금지한다.
 
 - [ ] compose 설정이 named volume을 쓰고 host `./data` bind mount를 쓰지 않는지 확인한다.
+- [ ] `.mcp.json`이 Docker image에 복사되지 않는지 파일 존재 여부만 검사하고 내용을 읽지 않는다.
 - [ ] 비밀 값 없이 `.env.example`로 실행 변수를 설명한다.
 - [ ] 실제 `.env` 내용을 출력하지 않고 `docker compose config -q`, named volume 이름 확인, 로컬 컨테이너 기동, `/health` 200, `PRAGMA integrity_check`, DB 진행 위치 변경 후 `docker compose down` / `up` 뒤 동일 진행 위치를 검증한다. 출력은 비밀 없이 기록한다.
 
