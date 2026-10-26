@@ -3,7 +3,7 @@ from pathlib import Path
 
 from aiohttp import web
 
-from sheet_parser import SKILL_NAMES
+from skill_names import SKILL_NAMES
 from storage import consume_registration_token, get_valid_registration_token, upsert_character
 
 POOL_KEY: web.AppKey = web.AppKey("pool")
